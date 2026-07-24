@@ -85,7 +85,11 @@ class ImprovedImageAnalyzer {
       'office supplies','office equipment','office','multimedia','technology',
       'consumer electronics','electronic','electronics','equipment','computing',
       'gadget','hardware','appliance','instrument','tool','device','machine',
-      'supplies','goods','product','material','object','item'
+      'supplies','goods','product','material','object','item',
+      // Visual/layout descriptors — Vision returns these for almost any clear photo
+      'rectangle','font','logo','sign','photograph','snapshot','image',
+      'illustration','graphic','macro photography','close up','close-up',
+      'number','digit','symbol','icon'
     ]);
   }
 
@@ -173,24 +177,33 @@ class ImprovedImageAnalyzer {
    * @param {Object} analysisResults - Results from analyzeImage
    * @returns {Promise<Array>} - Matching items
    */
-  async findSimilarItems(analysisResults) {
+  async findSimilarItems(analysisResults, userCategory = null) {
     try {
       console.log('Finding similar items with improved method');
-      
+
       // Get only active items — claimed, returned, and disposed items should not appear in search results
       const querySnapshot = await firebase.firestore().collection('items')
         .where('status', '==', 'active')
         .get();
-      const allItems = [];
+      let allItems = [];
       querySnapshot.forEach(doc => {
         allItems.push({
           id: doc.id,
           ...doc.data()
         });
       });
-      
+
       if (allItems.length === 0) {
         return [];
+      }
+
+      // Hard category filter — eliminates the biggest class of false positives at zero API cost
+      if (userCategory) {
+        const before = allItems.length;
+        allItems = allItems.filter(item =>
+          !item.category || item.category.toLowerCase() === userCategory.toLowerCase()
+        );
+        console.log(`Category filter "${userCategory}": ${before} → ${allItems.length} items`);
       }
       
       // Extract features from analysis results
@@ -214,6 +227,23 @@ class ImprovedImageAnalyzer {
       const queryVisionLabels = (analysisResults.labelAnnotations || [])
         .filter(l => !this.backgroundLabels.has(l.description.toLowerCase()))
         .map(l => ({ description: l.description, score: l.score || 0.5 }));
+
+      // Extract OCR tokens from the query image (highest-weight signal — brand names, serial numbers)
+      const queryOcrTokens = [];
+      const rawOcrText = (analysisResults.textAnnotations && analysisResults.textAnnotations[0])
+        ? (analysisResults.textAnnotations[0].description || '')
+        : '';
+      if (rawOcrText) {
+        const seen = new Set();
+        for (const t of rawOcrText.toLowerCase().split(/[\s\W]+/)) {
+          if (t.length > 2 && !this.backgroundLabels.has(t) && !seen.has(t)) {
+            queryOcrTokens.push({ token: t, conf: 1.0 });
+            seen.add(t);
+          }
+        }
+        if (queryOcrTokens.length > 0)
+          console.log('Query OCR tokens:', queryOcrTokens.map(t => t.token).join(', '));
+      }
 
       // Infer probable category from Vision labels before the item loop
       const inferredCategory = this._inferCategoryFromLabels(queryVisionLabels);
@@ -278,7 +308,9 @@ class ImprovedImageAnalyzer {
             queryVisionLabels,
             item.visionLabels,
             item.visionObjects || [],
-            item.visionWebEntities || []
+            item.visionWebEntities || [],
+            queryOcrTokens,
+            item.visionText || ''
           );
         }
 
@@ -1530,85 +1562,109 @@ class ImprovedImageAnalyzer {
   // in findSimilarItems via _compareFingerprints and _compareColorHistograms
 
   /**
-   * Confidence-weighted Jaccard similarity between query Vision labels and stored item labels.
-   * @param {Array<{description,score}>} queryLabels - from analyzeImage result
-   * @param {Array<{description,score}>} storedLabels - item.visionLabels
-   * @param {Array<{name,score}>} storedObjects - item.visionObjects
+   * Weighted multi-track semantic score between query and stored Vision data.
+   * Tracks are scored separately with explicit weights so high-signal features
+   * (OCR text, detected objects) outrank low-signal ones (generic labels).
+   *
+   * Weights: OCR ×5 · object ×3 · webEntity ×3 · label ×2
+   * Each hit is multiplied by the Vision confidence score, so a 0.95 "backpack"
+   * outranks a 0.70 "backpack" rather than counting equally.
+   *
+   * @param {Array<{description,score}>} queryLabels      - query Vision labels
+   * @param {Array<{description,score}>} storedLabels     - item.visionLabels
+   * @param {Array<{name,score}>}        storedObjects    - item.visionObjects
    * @param {Array<{description,score}>} storedWebEntities - item.visionWebEntities
+   * @param {Array<{token,conf}>}        queryOcrTokens   - OCR tokens from query image
+   * @param {string}                     storedVisionText - item.visionText (raw OCR string)
    * @returns {number} 0–1
    * @private
    */
-  _calculateVisionLabelMatchScore(queryLabels, storedLabels, storedObjects = [], storedWebEntities = []) {
+  _calculateVisionLabelMatchScore(queryLabels, storedLabels, storedObjects = [], storedWebEntities = [], queryOcrTokens = [], storedVisionText = '') {
     if (!queryLabels || queryLabels.length === 0) return 0;
     if (!storedLabels || storedLabels.length === 0) return 0;
 
+    const WEIGHTS = { ocr: 5, object: 3, webEntity: 3, label: 2 };
+
     const normalize = (arr, key = 'description') => {
       const map = new Map();
-      for (const item of arr) {
-        const text = ((item[key] || item.name) || '').toLowerCase().trim();
-        if (text) map.set(text, Math.max(map.get(text) || 0, item.score || 0));
+      for (const it of arr) {
+        const text = ((it[key] || it.name) || '').toLowerCase().trim();
+        if (text && !this.backgroundLabels.has(text))
+          map.set(text, Math.max(map.get(text) || 0, it.score || 0));
       }
       return map;
     };
 
-    const qMap = normalize(queryLabels);
-    const sMap = new Map();
-    for (const [k, v] of normalize(storedLabels)) sMap.set(k, v);
-    for (const [k, v] of normalize(storedObjects, 'name')) {
-      sMap.set(k, Math.max(sMap.get(k) || 0, v));
-    }
-    // Web entities are precise brand/product signals — weight slightly lower to avoid false positives
-    for (const [k, v] of normalize(storedWebEntities)) {
-      sMap.set(k, Math.max(sMap.get(k) || 0, v * 0.8));
-    }
+    const lMap = normalize(storedLabels);
+    const oMap = normalize(storedObjects, 'name');
+    const eMap = normalize(storedWebEntities);
 
-    // Weighted Jaccard numerator: sum of min(qW, sW) for matching labels
-    let intersectionSum = 0;
-    for (const [label, qWeight] of qMap) {
-      if (sMap.has(label)) {
-        intersectionSum += Math.min(qWeight, sMap.get(label));
-      } else {
-        // Partial credit for substring containment (e.g. "phone" ↔ "smartphone")
-        let partialCredit = 0;
-        for (const [sLabel, sWeight] of sMap) {
-          if (sLabel.includes(label) || label.includes(sLabel)) {
-            partialCredit = Math.max(partialCredit, Math.min(qWeight, sWeight) * 0.5);
-          }
-        }
-        // Synonym credit: "writing implement" query ↔ stored "pen" label
-        // Uses the shared VISION_LABEL_SYNONYMS / reverse map defined at module level.
-        const fwdSynonyms = VISION_LABEL_SYNONYMS[label] || [];
-        for (const syn of fwdSynonyms) {
-          if (sMap.has(syn)) {
-            partialCredit = Math.max(partialCredit, Math.min(qWeight, sMap.get(syn)) * 0.7);
-          }
-        }
-        // Also check reverse: stored label "writing instrument" ↔ query "pen"
-        for (const [sLabel, sWeight] of sMap) {
-          const revSynonyms = VISION_LABEL_SYNONYMS[sLabel] || [];
-          if (revSynonyms.includes(label)) {
-            partialCredit = Math.max(partialCredit, Math.min(qWeight, sWeight) * 0.7);
-          }
-        }
-        intersectionSum += partialCredit;
-      }
+    // Tokenize stored OCR text — short tokens and background terms are noise
+    const storedOcrSet = new Set(
+      (storedVisionText || '').toLowerCase().split(/[\s\W]+/).filter(t => t.length > 2 && !this.backgroundLabels.has(t))
+    );
+
+    let totalScore = 0, totalMax = 0;
+
+    // ── OCR track (weight 5) ─────────────────────────────────────
+    for (const { token, conf } of queryOcrTokens) {
+      const w = WEIGHTS.ocr * conf;
+      totalMax += w;
+      if (storedOcrSet.has(token)) totalScore += w;
     }
 
-    // Weighted Jaccard denominator: sum of max(qW, sW) across union of all labels
-    const allLabels = new Set([...qMap.keys(), ...sMap.keys()]);
-    let unionSum = 0;
-    for (const label of allLabels) {
-      unionSum += Math.max(qMap.get(label) || 0, sMap.get(label) || 0);
+    // ── Per-label: three parallel tracks ─────────────────────────
+    for (const qLabel of queryLabels) {
+      const text = qLabel.description.toLowerCase();
+      const conf = qLabel.score || 0.5;
+
+      // Object track (weight 3) — highest-precision stored signal
+      totalMax   += WEIGHTS.object * conf;
+      totalScore += WEIGHTS.object * conf * this._hitScore(text, oMap);
+
+      // WebEntity track (weight 3) — brand / product-name signals
+      totalMax   += WEIGHTS.webEntity * conf;
+      totalScore += WEIGHTS.webEntity * conf * this._hitScore(text, eMap);
+
+      // Label track (weight 2) — general scene / category labels
+      totalMax   += WEIGHTS.label * conf;
+      totalScore += WEIGHTS.label * conf * this._hitScore(text, lMap);
     }
 
-    if (unionSum === 0) return 0;
+    if (totalMax === 0) return 0;
+    const rawScore = totalScore / totalMax;
 
-    const rawScore = intersectionSum / unionSum;
-
-    // Mild curve: 30–50% label overlap is a meaningful match for lost-and-found
-    if (rawScore >= 0.5)  return 0.85 + (rawScore - 0.5) * 0.3;
-    if (rawScore >= 0.25) return 0.50 + (rawScore - 0.25) * 1.4;
+    // Mild curve: 25%+ raw overlap is a meaningful match for lost-and-found
+    if (rawScore >= 0.50) return 0.85 + (rawScore - 0.50) * 0.30;
+    if (rawScore >= 0.25) return 0.50 + (rawScore - 0.25) * 1.40;
     return rawScore * 2.0;
+  }
+
+  /**
+   * Score a query token against a stored Map<text, confidence>.
+   * Returns: stored confidence on exact match; partial/synonym credit on soft match; 0 on miss.
+   * @private
+   */
+  _hitScore(text, map) {
+    if (map.has(text)) return map.get(text); // exact match
+
+    let best = 0;
+    for (const [key, val] of map) {
+      if (key.includes(text) || text.includes(key))
+        best = Math.max(best, val * 0.5); // substring credit
+    }
+
+    // Forward synonym ("writing implement" → ["pen", "pencil"])
+    for (const syn of (VISION_LABEL_SYNONYMS[text] || [])) {
+      if (map.has(syn)) best = Math.max(best, map.get(syn) * 0.7);
+    }
+    // Reverse synonym (stored "writing implement" matches query "pen")
+    for (const [key, val] of map) {
+      if ((VISION_LABEL_SYNONYMS[key] || []).includes(text))
+        best = Math.max(best, val * 0.7);
+    }
+
+    return best;
   }
 
   /**
@@ -1669,22 +1725,37 @@ class ImprovedImageAnalyzer {
   _categoriesAreCompatible(inferredCategory, itemCategory) {
     if (!inferredCategory || !itemCategory) return true;
 
-    // Map Firestore category values (e.g. "phone", "bag") to keyword-category keys
-    // so the incompatible check actually fires for stored items.
+    // Map Firestore category values (from add-item.html select options) to keyword-category keys
+    // so the incompatible check fires for stored items.
     const categoryMap = {
+      // Actual Firestore category values
+      'gadgets':         'electronics',
+      'bags-wallets':    'accessories',
+      'accessories':     'accessories',
+      'garments':        'clothing',
+      'eyewear':         'accessories',
+      'cosmetics':       'personal',
+      'supplies':        'stationery',
+      'umbrella':        'personal',
+      'toys':            'personal',
+      'food-containers': 'personal',
+      'cash-cards':      'documents',
+      'documents':       'documents',
+      'keys':            'personal',
+      'other':           null,
+      // Legacy / freeform values some items may carry
       'phone': 'electronics', 'smartphone': 'electronics', 'laptop': 'electronics',
       'tablet': 'electronics', 'camera': 'electronics', 'headphones': 'electronics',
-      'earbuds': 'electronics', 'charger': 'electronics', 'powerbank': 'electronics',
-      'bag': 'accessories', 'wallet': 'accessories', 'jewelry': 'accessories',
-      'purse': 'accessories', 'backpack': 'accessories',
+      'bag': 'accessories', 'wallet': 'accessories', 'purse': 'accessories',
       'shoes': 'clothing', 'shoe': 'clothing', 'footwear': 'clothing',
       'jacket': 'clothing', 'shirt': 'clothing', 'pants': 'clothing',
       'pen': 'stationery', 'pencil': 'stationery', 'marker': 'stationery',
       'notebook': 'stationery', 'book': 'documents', 'id': 'documents', 'card': 'documents',
-      'keys': 'personal', 'bottle': 'personal',
     };
 
-    const normalizedItem = categoryMap[itemCategory.toLowerCase()] || itemCategory.toLowerCase();
+    const mapped = categoryMap[itemCategory.toLowerCase()];
+    if (mapped === null) return true; // 'other' — never exclude
+    const normalizedItem = mapped || itemCategory.toLowerCase();
 
     const incompatible = {
       'electronics': ['clothing', 'stationery', 'documents', 'accessories', 'personal'],

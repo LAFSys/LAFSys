@@ -152,12 +152,18 @@ class AccurateImageSearch {
                             'cyan','magenta','teal','maroon','navy','turquoise','crimson',
                             'ivory','lavender','peach','coral','mint','rose','scarlet',
                             // Abstract descriptors
-                            'paint','color','colour','hue','shade','tone','tint','dye'
+                            'paint','color','colour','hue','shade','tone','tint','dye',
+                            // Catch-all product/visual labels Vision returns for almost any clear photo
+                            'product','material','object','item','goods','supply','supplies',
+                            'rectangle','font','logo','sign','photograph','snapshot','image',
+                            'illustration','graphic','macro photography','close up','close-up',
+                            'number','digit','symbol','icon'
                         ]);
 
-                        // Filter: remove background/color labels and require ≥ 0.6 confidence
+                        // Filter: remove background/color labels and require ≥ 0.5 confidence
+                        // (confidence now acts as a score multiplier in ranking, not just a gate)
                         const filteredLabels = (visionResults.labelAnnotations || [])
-                            .filter(l => !BG_LABELS.has(l.description.toLowerCase()) && l.score >= 0.6);
+                            .filter(l => !BG_LABELS.has(l.description.toLowerCase()) && l.score >= 0.5);
 
                         // Sort localized objects so the one closest to the image center ranks
                         // first. The item the user is searching for is almost always what they
@@ -267,7 +273,9 @@ class AccurateImageSearch {
             this.displayAnalysisResults(analysisResults);
 
             // Find similar items based on the analysis
-            const matchingItems = await window.ImprovedImageAnalyzer.findSimilarItems(analysisResults);
+            // Pass the user-selected category for hard pre-filtering
+            const userCategory = document.getElementById('searchCategory')?.value || null;
+            const matchingItems = await window.ImprovedImageAnalyzer.findSimilarItems(analysisResults, userCategory || null);
 
             // Display the results
             this.displaySearchResults(matchingItems, analysisResults);
@@ -696,6 +704,27 @@ function addImprovedSearchStyles() {
             margin-bottom: 8px;
         }
 
+        .search-category-wrap {
+            margin-top: 8px;
+        }
+
+        .search-category-select {
+            width: 100%;
+            padding: 6px 8px;
+            font-size: 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            background: #fff;
+            color: #374151;
+            cursor: pointer;
+        }
+
+        .search-category-select:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59,130,246,0.15);
+        }
+
         .searching {
             display: flex;
             align-items: center;
@@ -762,6 +791,8 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('searchResults').innerHTML = '';
             const analysisInfo = document.getElementById('analysisInfo');
             if (analysisInfo) analysisInfo.innerHTML = '';
+            const catSel = document.getElementById('searchCategory');
+            if (catSel) catSel.value = '';
             document.querySelector('.image-search-modal-content')?.classList.remove('has-results');
             
             // Open the modal
