@@ -51,8 +51,8 @@ class ImprovedImageAnalyzer {
     
     // Category keywords for better matching
     this.categoryKeywords = {
-      'electronics': ['phone', 'smartphone', 'iphone', 'android', 'laptop', 'computer', 'tablet', 'ipad', 'earbuds', 'headphones', 'watch', 'smart watch', 'camera', 'charger', 'cable', 'powerbank', 'speaker'],
-      'accessories': ['wallet', 'purse', 'bag', 'backpack', 'jewelry', 'necklace', 'ring', 'bracelet', 'watch', 'sunglasses', 'glasses', 'hat', 'cap', 'umbrella', 'keychain', 'belt'],
+      'electronics': ['phone', 'smartphone', 'iphone', 'android', 'laptop', 'computer', 'tablet', 'ipad', 'earbuds', 'headphones', 'smart watch', 'camera', 'charger', 'cable', 'powerbank', 'speaker'],
+      'accessories': ['wallet', 'purse', 'bag', 'backpack', 'jewelry', 'necklace', 'ring', 'bracelet', 'watch', 'analog watch', 'wristwatch', 'sunglasses', 'glasses', 'hat', 'cap', 'umbrella', 'keychain', 'belt'],
       'clothing': ['jacket', 'shirt', 'pants', 'jeans', 'dress', 'skirt', 'sweater', 'hoodie', 'coat', 'socks', 'shoes', 'boots', 'sneakers', 'footwear', 'shoe'],
       'stationery': ['pen', 'pencil', 'marker', 'ballpen', 'ballpoint', 'writing instrument', 'highlighter', 'notebook', 'eraser', 'ruler', 'scissors', 'stapler', 'tape', 'glue'],
       'documents': ['id', 'card', 'passport', 'book', 'paper', 'document', 'folder', 'file', 'license'],
@@ -1757,12 +1757,16 @@ class ImprovedImageAnalyzer {
     if (mapped === null) return true; // 'other' — never exclude
     const normalizedItem = mapped || itemCategory.toLowerCase();
 
+    // 'accessories' is intentionally absent from the electronics blocklist:
+    // smartwatches, wireless earbuds, etc. straddle both categories.
+    // Similarly 'electronics' is absent from accessories: a wristwatch is accessories,
+    // a smart band could be electronics — don't block either direction.
     const incompatible = {
-      'electronics': ['clothing', 'stationery', 'documents', 'accessories', 'personal'],
-      'clothing':    ['electronics', 'stationery', 'documents', 'accessories'],
+      'electronics': ['clothing', 'stationery', 'documents', 'personal'],
+      'clothing':    ['electronics', 'stationery', 'documents'],
       'stationery':  ['electronics', 'clothing', 'accessories', 'personal'],
       'documents':   ['electronics', 'clothing', 'personal', 'accessories'],
-      'accessories': ['electronics', 'clothing', 'stationery', 'documents'],
+      'accessories': ['clothing', 'stationery', 'documents'],
       'personal':    ['electronics', 'clothing', 'documents', 'stationery']
     };
 
