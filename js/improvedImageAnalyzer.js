@@ -27,8 +27,34 @@ const VISION_LABEL_SYNONYMS = {
   'book':              ['book', 'notebook', 'journal', 'diary', 'planner'],
   'umbrella':          ['umbrella', 'parasol'],
   'musical instrument':['guitar', 'violin', 'piano', 'keyboard', 'drum', 'ukulele'],
-  'cosmetics':         ['makeup', 'lipstick', 'foundation', 'blush', 'eyeliner', 'concealer'],
+  'cosmetics':         ['makeup', 'lipstick', 'lip gloss', 'lip serum', 'lip balm', 'lip tint', 'lip care', 'foundation', 'blush', 'eyeliner', 'concealer', 'mascara', 'shampoo', 'conditioner', 'lotion', 'soap', 'deodorant', 'hair care', 'hair product', 'personal care'],
+  // Hair & body care
+  'personal care':     ['cosmetics', 'makeup', 'shampoo', 'conditioner', 'lotion', 'soap', 'deodorant', 'toiletry', 'hygiene', 'hair care', 'hair product', 'skincare'],
+  'hair care':         ['shampoo', 'conditioner', 'dry shampoo', 'hair product', 'hair spray', 'personal care', 'cosmetics'],
+  'shampoo':           ['dry shampoo', 'hair wash', 'hair care', 'conditioner', 'hair product'],
+  'dry shampoo':       ['shampoo', 'hair care', 'hair spray', 'hair product'],
+  'beauty':            ['cosmetics', 'makeup', 'personal care', 'hair care'],
+  'skin care':         ['lotion', 'cream', 'serum', 'moisturizer', 'toner', 'cosmetics'],
+  'skincare':          ['lotion', 'cream', 'serum', 'moisturizer', 'toner', 'cosmetics'],
   'luggage':           ['luggage', 'suitcase', 'bag', 'trolley'],
+  // Lip product group — each can be any other since users rarely know exact product type
+  'lipstick':          ['lip gloss', 'lip serum', 'lip balm', 'lip tint', 'lip care', 'lip color', 'lip product', 'lip stick'],
+  'lip gloss':         ['lipstick', 'lip serum', 'lip balm', 'lip tint', 'lip care', 'lip color'],
+  'lip care':          ['lipstick', 'lip gloss', 'lip serum', 'lip balm', 'lip tint', 'lip color'],
+  'lip liner':         ['lipstick', 'lip gloss', 'lip care', 'lip color'],
+  // Drinkware group
+  'water bottle':      ['tumbler', 'thermos', 'flask', 'bottle', 'mug', 'travel mug'],
+  'tumbler':           ['water bottle', 'thermos', 'flask', 'bottle', 'mug', 'travel mug'],
+  'bottle':            ['tumbler', 'water bottle', 'thermos', 'flask'],
+  // Storage / flash drive
+  'usb flash drive':   ['flash drive', 'usb drive', 'thumb drive', 'usb', 'pendrive', 'pen drive', 'memory stick'],
+  'flash drive':       ['usb flash drive', 'usb drive', 'thumb drive', 'usb', 'pendrive'],
+  // Shoes / footwear — each term covers all the others
+  'sneakers':          ['shoe', 'shoes', 'sneaker', 'rubber shoes', 'rubber shoe', 'athletic shoe', 'sport shoe'],
+  'shoe':              ['sneakers', 'sneaker', 'rubber shoes', 'rubber shoe', 'footwear', 'boots', 'sandal'],
+  // Keys / keychains
+  'key':               ['keys', 'keychain', 'key chain', 'car key', 'house key'],
+  'keys':              ['key', 'keychain', 'key chain', 'car key', 'house key'],
 };
 
 // Build a reverse lookup: specific word → generic labels that cover it
@@ -56,7 +82,8 @@ class ImprovedImageAnalyzer {
       'clothing': ['jacket', 'shirt', 'pants', 'jeans', 'dress', 'skirt', 'sweater', 'hoodie', 'coat', 'socks', 'shoes', 'boots', 'sneakers', 'footwear', 'shoe'],
       'stationery': ['pen', 'pencil', 'marker', 'ballpen', 'ballpoint', 'writing instrument', 'highlighter', 'notebook', 'eraser', 'ruler', 'scissors', 'stapler', 'tape', 'glue'],
       'documents': ['id', 'card', 'passport', 'book', 'paper', 'document', 'folder', 'file', 'license'],
-      'personal': ['keys', 'key', 'bottle', 'water bottle', 'medicine', 'cosmetics', 'makeup', 'toy', 'fan', 'lunchbox']
+      'personal': ['keys', 'key', 'bottle', 'water bottle', 'tumbler', 'medicine', 'cosmetics', 'makeup', 'lipstick', 'lip gloss', 'lip care', 'lip serum', 'lip balm', 'eyeshadow', 'mascara', 'foundation', 'blush', 'toy', 'fan', 'lunchbox',
+                   'shampoo', 'conditioner', 'dry shampoo', 'hair care', 'hair product', 'personal care', 'lotion', 'soap', 'deodorant', 'skincare', 'beauty', 'perfume', 'cologne']
     };
 
     // Labels that indicate scene/background or are non-object descriptors
@@ -331,11 +358,13 @@ class ImprovedImageAnalyzer {
           const semanticScore = Math.max(visionLabelScore, labelTitleScore);
           // Color weight is kept very low — a laptop with a red wallpaper has the same
           // color histogram as a red pen, so color alone must not drive relevance.
+          // Visual (dHash) is reduced vs. semantic: a different-angle photo of the same item
+          // should still match well via labels even when the fingerprint is poor.
           weightedScore = (
-            semanticScore     * 0.65 +
+            semanticScore     * 0.70 +
             colorCompareScore * 0.10 +
-            visualScore       * 0.20 +
-            categoryScore     * 0.05
+            visualScore       * 0.13 +
+            categoryScore     * 0.07
           );
           // Semantic gate: if we can identify the query object type but this item has no
           // meaningful label overlap at all, suppress it below the filtering threshold so
@@ -344,14 +373,19 @@ class ImprovedImageAnalyzer {
             weightedScore = Math.min(weightedScore, 0.30);
           }
         } else {
-          // Semantic label→title match is the primary gate (0–60%).
-          // Visual similarity refines within that gate. Color is a weak tiebreaker only —
-          // it is far too unreliable on its own (a red-screen laptop matches a red pen).
-          const visualBonus =
-            visualScore       * 0.60 +
-            colorCompareScore * 0.20 +
-            descriptionScore  * 0.20;
-          weightedScore = labelTitleScore * 0.60 + visualBonus * 0.40;
+          // No stored Vision labels — rely on semantic label→title matching, category match,
+          // and color. dHash fingerprint (visualScore) is angle-sensitive and unreliable for
+          // different-angle photos of the same item, so it gets a small weight.
+          // categoryScore is the hidden gem here: when a query label (e.g. "Cosmetics")
+          // matches the item's stored category string ("cosmetics") exactly, it's a 0.70
+          // signal that was previously ignored. Now it gets dedicated weight.
+          weightedScore = (
+            labelTitleScore   * 0.62 +
+            categoryScore     * 0.15 +
+            colorCompareScore * 0.12 +
+            visualScore       * 0.08 +
+            descriptionScore  * 0.03
+          );
           // Same semantic gate for the no-Vision fallback path
           if (inferredCategory && labelTitleScore < 0.20) {
             weightedScore = Math.min(weightedScore, 0.30);
@@ -382,19 +416,28 @@ class ImprovedImageAnalyzer {
       // Sort by score (highest first)
       scoredItems.sort((a, b) => b.score - a.score);
 
-      // Filter out low-confidence results — when we know the object type (inferredCategory),
-      // apply a stricter threshold so unrelated items don't pollute results.
-      const minThreshold = inferredCategory ? 0.45 : 0.25;
-      const meaningful = scoredItems.filter(item => item.score >= minThreshold);
+      // Absolute floor: when we know the object type (inferredCategory), require a higher
+      // minimum so clearly unrelated items never surface.
+      const minAbsolute = inferredCategory ? 0.40 : 0.22;
+      const passing = scoredItems.filter(item => item.score >= minAbsolute);
 
-      if (meaningful.length > 0) return meaningful.slice(0, 5);
+      if (passing.length === 0) {
+        // When no category was inferred (no Vision data), return top 3 as a best-effort guess.
+        // When a category WAS inferred, do NOT fall back — showing a bag for a pen search is
+        // more confusing than showing "no results found".
+        if (!inferredCategory) return scoredItems.slice(0, 3);
+        return [];
+      }
 
-      // No items cleared the threshold.
-      // When no category was inferred (no Vision data), return top 3 as a best-effort guess.
-      // When a category WAS inferred, do NOT fall back — showing a bag, laptop, or shoe for
-      // a pen search is more confusing than showing "no results found".
-      if (!inferredCategory) return scoredItems.slice(0, 3);
-      return [];
+      // Adaptive relative filter: when the top result is confident (≥55%), only show items
+      // within 20pp of it. A 74% watch match should not drag along a 49% bracelet.
+      // Below 55% the top match itself is weak, so keep the absolute floor only.
+      const topScore = passing[0].score; // already sorted descending
+      const adaptiveMin = topScore >= 0.55
+        ? Math.max(minAbsolute, topScore - 0.20)
+        : minAbsolute;
+
+      return passing.filter(item => item.score >= adaptiveMin).slice(0, 5);
     } catch (error) {
       console.error('Error finding similar items:', error);
       throw new Error('Failed to find similar items');

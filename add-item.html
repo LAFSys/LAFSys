@@ -569,50 +569,44 @@
             });
             
             // Function to save item to database
-            async function saveItemToDatabase(itemData, isEditMode, itemId, statusDiv) {
+            async function saveItemToDatabase(itemData, isEditMode, itemId, statusDiv, autoRedirect = true) {
                 try {
                     statusDiv.textContent = 'Saving to database...';
-                    
+
                     if (isEditMode && itemId) {
                         // Update existing item
                         console.log('Updating item in Firestore...');
-                        
+
                         // Remove createdAt for updates, add updatedAt instead
                         delete itemData.createdAt;
                         itemData.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
-                        
+
                         await db.collection('items').doc(itemId).update(itemData);
                         console.log('Document updated with ID:', itemId);
-                        
+
                         statusDiv.style.background = '#22c55e';
                         statusDiv.textContent = 'Item updated successfully!';
-                        
-                        setTimeout(() => {
-                            window.location.href = 'admin.html';
-                        }, 500);
-                        
-                        return itemId; // Return the ID for background processing
+
+                        if (autoRedirect) setTimeout(() => { window.location.href = 'admin.html'; }, 500);
+                        return itemId;
                     } else {
                         // Add new item to Firestore
                         console.log('Adding item to Firestore...');
-                        
+
                         const docRef = await db.collection('items').add(itemData);
                         console.log('Document added with ID:', docRef.id);
-                        
+
                         statusDiv.style.background = '#22c55e';
                         statusDiv.textContent = 'Item added successfully!';
-                        
-                        setTimeout(() => {
-                            window.location.href = 'admin.html';
-                        }, 500);
-                        
-                        return docRef.id; // Return the new ID for background processing
+
+                        if (autoRedirect) setTimeout(() => { window.location.href = 'admin.html'; }, 500);
+                        return docRef.id;
                     }
                 } catch (error) {
                     console.error('Error saving to database:', error);
                     statusDiv.style.background = '#ef4444';
                     statusDiv.textContent = 'Error: ' + error.message;
-                    return null; // Return null if there's an error
+                    return null;
                 }
             }
             
@@ -682,77 +676,48 @@
                         return;
                     }
                     
-                    // Fast upload with optimized approach
+                    // Compress image to ≤800px / 70% quality so the base64 fits under Firestore's 1MB field limit
                     statusDiv.textContent = 'Processing image...';
-                    
-                    try {
-                        // First create a data URL for immediate display
-                        const reader = new FileReader();
-                        reader.readAsDataURL(imageFile);
-                        
-                        reader.onload = function(event) {
-                            const dataUrl = event.target.result;
-                            
-                            // Immediately save with the data URL for speed
-                            console.log('Using data URL for immediate display');
-                            itemData.image = dataUrl;
-                            
-                            // Start saving to database with data URL
-                            statusDiv.textContent = 'Saving item...';
-                            saveItemToDatabase(itemData, isEditMode, itemId, statusDiv).then(function(savedDocId) {
-                                // After saving, upload to Firebase Storage in background
-                                try {
-                                    console.log('Starting Firebase upload in background');
-                                    const fileName = `items/${Date.now()}_${imageFile.name}`;
-                                    const storageRef = firebase.storage().ref();
-                                    const imageRef = storageRef.child(fileName);
-                                    
-                                    imageRef.put(imageFile).then(function() {
-                                        return imageRef.getDownloadURL();
-                                    }).then(function(downloadURL) {
-                                        console.log('Firebase upload completed, URL:', downloadURL);
-                                        
-                                        // Get the correct document ID that was just saved
-                                        const docId = isEditMode ? itemId : savedDocId;
-                                        console.log('Updating image URL in document:', docId);
-                                        
-                                        if (!docId) {
-                                            console.error('No document ID available for update');
-                                            return;
-                                        }
-                                        
-                                        // Update the item in database with the permanent URL
-                                        return db.collection('items').doc(docId).update({
-                                            image: downloadURL
-                                        }).then(function() {
-                                            // Fire-and-forget: enrich item with Vision labels in background
-                                            // Uses imageFile (still in scope) for best quality — no extra network fetch needed
-                                            if (window.CloudVision && window.CloudVision.available) {
-                                                window.CloudVision.enrichItem(docId, imageFile);
-                                            }
-                                        });
-                                    }).catch(function(error) {
-                                        console.error('Background upload failed:', error);
-                                    });
-                                } catch (uploadError) {
-                                    console.error('Error starting background upload:', uploadError);
-                                    // This won't affect the user experience since the item is already saved
-                                }
-                            }).catch(function(error) {
-                                console.error('Error in save item callback:', error);
+                    let compressedFile = imageFile;
+                    if (window.ImageCompressor) {
+                        try {
+                            compressedFile = await window.ImageCompressor.compress(imageFile, {
+                                maxWidth: 800, maxHeight: 800, quality: 0.70
                             });
-                        };
-                        
-                        reader.onerror = function() {
-                            console.error('Error reading file as data URL');
-                            statusDiv.style.background = '#ef4444';
-                            statusDiv.textContent = 'Error processing image';
-                        };
-                    } catch (imageProcessError) {
-                        console.error('Error in image processing:', imageProcessError);
-                        statusDiv.style.background = '#ef4444';
-                        statusDiv.textContent = 'Error: ' + imageProcessError.message;
+                            console.log(`Compressed: ${Math.round(imageFile.size/1024)}KB → ${Math.round(compressedFile.size/1024)}KB`);
+                        } catch (e) {
+                            console.warn('Compression failed, using original:', e);
+                        }
                     }
+
+                    // Convert compressed image to data URL and save to Firestore
+                    const dataUrl = await new Promise((resolve, reject) => {
+                        const r = new FileReader();
+                        r.onload  = e => resolve(e.target.result);
+                        r.onerror = () => reject(new Error('Failed to read image'));
+                        r.readAsDataURL(compressedFile);
+                    });
+
+                    itemData.image = dataUrl;
+                    statusDiv.textContent = 'Saving item...';
+
+                    // Don't auto-redirect yet — we need to wait for Vision enrichment
+                    const savedDocId = await saveItemToDatabase(itemData, isEditMode, itemId, statusDiv, false);
+
+                    // Wait for Vision enrichment (up to 8s) so the item is immediately searchable by image
+                    if (window.CloudVision && window.CloudVision.available && savedDocId) {
+                        statusDiv.textContent = 'Indexing image for search...';
+                        try {
+                            await Promise.race([
+                                window.CloudVision.enrichItem(savedDocId, imageFile),
+                                new Promise(resolve => setTimeout(resolve, 8000))
+                            ]);
+                        } catch (e) {
+                            console.warn('Vision enrichment did not complete:', e);
+                        }
+                    }
+
+                    window.location.href = 'admin.html';
                 } catch (error) {
                     console.error('Error in form processing:', error);
                     statusDiv.style.background = '#ef4444';
