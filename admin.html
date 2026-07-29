@@ -662,6 +662,25 @@
             }
         }
         
+        /* ── Stat-card delta pill ────────────────────────────────────────── */
+        .stat-delta {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.15rem;
+            margin-top: 0.5rem;
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.01em;
+            padding: 0.2rem 0.55rem;
+            border-radius: 999px;
+            width: fit-content;
+        }
+        .stat-delta:empty { display: none; }
+        .stat-delta.up   { background: #dcfce7; color: #166534; }
+        .stat-delta.down { background: #fee2e2; color: #991b1b; }
+        .stat-delta.flat { background: #f1f5f9; color: #64748b; }
+        .stat-delta-sub  { display: block; font-size: 0.67rem; color: #94a3b8; margin-top: 0.15rem; font-weight: 400; }
+
         /* Notification badge styling */
         .notification-badge {
             position: absolute;
@@ -775,6 +794,7 @@
                             Total Items
                         </div>
                         <div class="stat-value" id="statTotalItems">0</div>
+                        <div class="stat-delta" id="deltaTotalItems"></div>
                     </div>
                     <div class="stat-card" data-filter="active" id="activeItemsCard">
                         <div class="stat-label">
@@ -782,6 +802,7 @@
                             Active Found Items
                         </div>
                         <div class="stat-value" id="statActive">0</div>
+                        <div class="stat-delta" id="deltaActive"></div>
                     </div>
                     <div class="stat-card" id="activeLostCard" data-filter="lost" style="cursor:pointer;">
                         <div class="stat-label">
@@ -789,6 +810,7 @@
                             Active Lost Items
                         </div>
                         <div class="stat-value" id="statActiveLost">—</div>
+                        <div class="stat-delta" id="deltaActiveLost"></div>
                     </div>
                     <div class="stat-card" data-filter="claimed" id="claimedItemsCard">
                         <div class="stat-label">
@@ -796,6 +818,7 @@
                             Items Claimed / Resolved
                         </div>
                         <div class="stat-value" id="statClaimed">0</div>
+                        <div class="stat-delta" id="deltaClaimed"></div>
                     </div>
                 </div>
 

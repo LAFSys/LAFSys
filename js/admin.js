@@ -156,6 +156,7 @@ function initAdminLostItems() {
       _renderAdminLostItems();
       // Only re-render dashboard table from server data to avoid stale-cache flashes
       if (_statsInitialized && !snap.metadata.fromCache) renderRecentItemsWithoutActions();
+      if (_cachedFoundItems) updateStatTrends(_cachedFoundItems, _lostItemsCurrent);
     }, () => {});
 
   document.getElementById('lostItemStatusFilter')?.addEventListener('change', _renderAdminLostItems);
@@ -480,6 +481,7 @@ function watchFoundItemsStats() {
         _statsInitialized = true;
         _cachedFoundItems = snap.docs.map(d => ({ id: d.id, _type: 'found', ...d.data() }));
         renderRecentItemsWithoutActions();
+        updateStatTrends(_cachedFoundItems, _lostItemsCurrent);
       }, () => {});
     } catch (e) {
       if (retries-- > 0) setTimeout(tryWatch, 300);
@@ -602,9 +604,21 @@ function watchClaimedResolvedCount() {
 
       // Real-time listeners for live updates
       db.collection('items').where('status', '==', 'claimed')
-        .onSnapshot(snap => { foundClaimed = snap.size; update(); },
-                    ()   => { db.collection('items').where('status','==','claimed').get()
-                                .then(s => { foundClaimed = s.size; update(); }).catch(() => {}); });
+        .onSnapshot(snap => {
+          foundClaimed = snap.size; update();
+          // Refresh the delta pill using the live claimed docs + cached found items
+          if (_cachedFoundItems) {
+            const claimedDocs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            // Merge into cachedFoundItems so updateStatTrends sees latest updatedAt
+            const merged = _cachedFoundItems.map(item => {
+              const live = claimedDocs.find(d => d.id === item.id);
+              return live ? { ...item, ...live } : item;
+            });
+            updateStatTrends(merged, _lostItemsCurrent);
+          }
+        },
+        ()   => { db.collection('items').where('status','==','claimed').get()
+                    .then(s => { foundClaimed = s.size; update(); }).catch(() => {}); });
 
       db.collection('lostItems').where('status', '==', 'resolved')
         .onSnapshot(snap => { lostResolved = snap.size; update(); },
@@ -1233,4 +1247,73 @@ function deleteMessage(messageId, row) {
       console.error('Error deleting message:', err);
     });
   }
+}
+
+// ── Stat-card month-over-month delta indicators ────────────────────────────────
+function updateStatTrends(foundItems, lostItems) {
+  const now      = new Date();
+  const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const prev     = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const lastMonth = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
+  const prevLabel = prev.toLocaleDateString('en-PH', { month: 'long' });
+
+  function getMonth(item) {
+    const raw = item.date || item.createdAt || item.postedAt || item.dateLost;
+    if (!raw) return null;
+    if (typeof raw === 'string') return raw.substring(0, 7);
+    if (raw.toDate) return raw.toDate().toISOString().substring(0, 7);
+    if (raw instanceof Date) return raw.toISOString().substring(0, 7);
+    return null;
+  }
+
+  function setPill(id, thisN, lastN) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (thisN === 0 && lastN === 0) { el.innerHTML = ''; return; }
+    if (lastN === 0) {
+      el.className = 'stat-delta up';
+      el.innerHTML = `&#9650; ${thisN} new this month`;
+      return;
+    }
+    const pct = ((thisN - lastN) / lastN) * 100;
+    const abs = Math.round(Math.abs(pct));
+    if (pct > 0) {
+      el.className = 'stat-delta up';
+      el.innerHTML = `&#9650; +${abs}% vs ${prevLabel}`;
+    } else if (pct < 0) {
+      el.className = 'stat-delta down';
+      el.innerHTML = `&#9660; &minus;${abs}% vs ${prevLabel}`;
+    } else {
+      el.className = 'stat-delta flat';
+      el.innerHTML = `&#8594; same as ${prevLabel}`;
+    }
+  }
+
+  // Total items found (by found date)
+  const thisTotal  = foundItems.filter(i => getMonth(i) === thisMonth).length;
+  const lastTotal  = foundItems.filter(i => getMonth(i) === lastMonth).length;
+  setPill('deltaTotalItems', thisTotal, lastTotal);
+
+  // Active found items added this month vs last
+  setPill('deltaActive', thisTotal, lastTotal);
+
+  // Lost items reported this month vs last
+  if (lostItems && lostItems.length) {
+    const thisLost = lostItems.filter(i => getMonth(i) === thisMonth).length;
+    const lastLost = lostItems.filter(i => getMonth(i) === lastMonth).length;
+    setPill('deltaActiveLost', thisLost, lastLost);
+  }
+
+  // Claimed items: use updatedAt (set when status changed to 'claimed') not the found date
+  function claimMonth(item) {
+    const raw = item.updatedAt;
+    if (!raw) return null;
+    if (raw.toDate) return raw.toDate().toISOString().substring(0, 7);
+    if (raw instanceof Date) return raw.toISOString().substring(0, 7);
+    return null;
+  }
+  const claimedAll  = foundItems.filter(i => i.status === 'claimed');
+  const thisClaimed = claimedAll.filter(i => claimMonth(i) === thisMonth).length;
+  const lastClaimed = claimedAll.filter(i => claimMonth(i) === lastMonth).length;
+  setPill('deltaClaimed', thisClaimed, lastClaimed);
 }
