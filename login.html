@@ -381,7 +381,14 @@ async function doLogin() {
     btn.innerHTML = '<span class="spinner"></span>Logging in…';
 
     try {
-        await auth.signInWithEmailAndPassword(email, password);
+        // Explicitly persist session to localStorage/IndexedDB so it survives page navigation
+        await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+
+        const signInPromise = auth.signInWithEmailAndPassword(email, password);
+        const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject({ code: 'auth/network-timeout' }), 15000)
+        );
+        await Promise.race([signInPromise, timeoutPromise]);
         // onAuthStateChanged will redirect to dashboard
     } catch (err) {
         btn.disabled = false;
@@ -392,6 +399,8 @@ async function doLogin() {
             ? 'Too many failed attempts. Please wait a few minutes and try again.'
             : err.code === 'auth/user-disabled'
             ? 'This account has been disabled. Please contact support.'
+            : err.code === 'auth/network-timeout'
+            ? 'Login timed out. Please check your internet connection and try again.'
             : 'Login failed. Please check your connection and try again.';
         showAlert('loginAlert', msg);
     }

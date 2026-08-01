@@ -1008,6 +1008,10 @@
                                     <span class="item-detail-label">Status:</span>
                                     <span class="item-detail-value" id="liamStatus"></span>
                                 </div>
+                                <div class="item-detail-row" id="liamDeclineReasonRow" style="display:none;">
+                                    <span class="item-detail-label" style="color:#b91c1c;">Decline Reason:</span>
+                                    <span class="item-detail-value" id="liamDeclineReasonText" style="color:#b91c1c;"></span>
+                                </div>
                             </div>
                             <!-- Edit Form (hidden in view mode) -->
                             <div id="liamEditForm" style="display:none; flex-direction:column; gap:0.75rem; margin-bottom:1rem;">
@@ -1039,11 +1043,22 @@
                                 </div>
                             </div>
                             <div class="item-modal-actions" style="margin-top:auto; gap:0.5rem; flex-wrap:wrap;">
-                                <div id="liamViewActions" style="display:flex; gap:0.5rem; flex-wrap:wrap;">
-                                    <button id="liamApproveBtn" onclick="window._lostItemAdminApprove()" style="display:none; padding:0.5rem 1.25rem; background:#f59e0b; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:500;">Approve</button>
-                                    <button id="liamEditBtn" onclick="window._lostItemAdminEdit()" style="padding:0.5rem 1.25rem; background:#1a2e6b; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:500;">Edit</button>
-                                    <button id="liamResolveBtn" onclick="window._lostItemAdminResolve()" style="padding:0.5rem 1.25rem; background:#10b981; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:500;">Mark as Resolved</button>
-                                    <button onclick="window._lostItemAdminDelete()" style="padding:0.5rem 1.25rem; background:#ef4444; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:500;">Delete</button>
+                                <div id="liamViewActions" style="display:flex; gap:0.5rem; flex-wrap:wrap; flex-direction:column;">
+                                    <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+                                        <button id="liamApproveBtn" onclick="window._lostItemAdminApprove()" style="display:none; padding:0.5rem 1.25rem; background:#f59e0b; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:500;">Approve</button>
+                                        <button id="liamEditBtn" onclick="window._lostItemAdminEdit()" style="padding:0.5rem 1.25rem; background:#1a2e6b; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:500;">Edit</button>
+                                        <button id="liamResolveBtn" onclick="window._lostItemAdminResolve()" style="padding:0.5rem 1.25rem; background:#10b981; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:500;">Mark as Resolved</button>
+                                        <button id="liamDeclineBtn" onclick="window._lostItemAdminShowDecline()" style="display:none; padding:0.5rem 1.25rem; background:#ef4444; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:500;">Decline</button>
+                                    </div>
+                                    <!-- Decline reason panel (hidden by default) -->
+                                    <div id="liamDeclinePanel" style="display:none; flex-direction:column; gap:0.5rem; background:#fff5f5; border:1px solid #fecaca; border-radius:6px; padding:0.75rem;">
+                                        <label style="font-size:0.82rem; font-weight:600; color:#b91c1c;">Reason for declining (required)</label>
+                                        <textarea id="liamDeclineReason" rows="2" placeholder="e.g. Insufficient description, duplicate report…" style="width:100%; border:1px solid #fca5a5; border-radius:4px; padding:0.4rem 0.6rem; font-size:0.83rem; resize:vertical; box-sizing:border-box;"></textarea>
+                                        <div style="display:flex; gap:0.5rem;">
+                                            <button onclick="window._lostItemAdminConfirmDecline()" style="padding:0.4rem 1rem; background:#ef4444; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:500; font-size:0.83rem;">Confirm Decline</button>
+                                            <button onclick="window._lostItemAdminHideDecline()" style="padding:0.4rem 1rem; background:#94a3b8; color:#fff; border:none; border-radius:6px; cursor:pointer; font-size:0.83rem;">Cancel</button>
+                                        </div>
+                                    </div>
                                 </div>
                                 <div id="liamEditActions" style="display:none; gap:0.5rem;">
                                     <button id="liamSaveBtn" onclick="window._lostItemAdminSaveEdit()" style="padding:0.5rem 1.25rem; background:#10b981; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:500;">Save Changes</button>

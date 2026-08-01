@@ -175,8 +175,14 @@ function _renderAdminLostItems() {
 
   container.innerHTML = items.map(item => {
     const isPending   = item.status === 'pending';
-    const statusColor = item.status === 'resolved' ? '#10b981' : isPending ? '#dc2626' : '#f59e0b';
-    const statusLabel = isPending ? 'Pending' : (item.status || 'active');
+    const isDeclined  = item.status === 'declined';
+    const statusColor = item.status === 'resolved' ? '#10b981'
+                      : isPending   ? '#dc2626'
+                      : isDeclined  ? '#64748b'
+                      : '#f59e0b';
+    const statusLabel = isPending  ? 'Pending'
+                      : isDeclined ? 'Declined'
+                      : (item.status || 'active');
     const thumb = item.image
       ? `<img src="${item.image}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;flex-shrink:0;">`
       : `<div style="width:40px;height:40px;background:#f1f5f9;border-radius:6px;flex-shrink:0;"></div>`;
@@ -231,13 +237,17 @@ function _showLostItemModal(item) {
   document.getElementById('liamStatus').textContent   = item.status || 'active';
   document.getElementById('liamDesc').textContent     = item.description || '—';
 
-  // Badge: PENDING or LOST
+  // Badge: PENDING / DECLINED / LOST
   const badge = document.getElementById('liamTypeBadge');
   if (badge) {
     if (item.status === 'pending') {
       badge.textContent = 'PENDING APPROVAL';
       badge.style.background = '#fef3c7';
       badge.style.color = '#92400e';
+    } else if (item.status === 'declined') {
+      badge.textContent = 'DECLINED';
+      badge.style.background = '#f1f5f9';
+      badge.style.color = '#475569';
     } else {
       badge.textContent = 'LOST';
       badge.style.background = '#fef3c7';
@@ -245,16 +255,37 @@ function _showLostItemModal(item) {
     }
   }
 
-  // Show/hide Approve and Resolve buttons based on status
+  // Show decline reason in modal if present
+  const reasonRow = document.getElementById('liamDeclineReasonRow');
+  if (reasonRow) {
+    if (item.status === 'declined' && item.declineReason) {
+      reasonRow.style.display = '';
+      const reasonEl = document.getElementById('liamDeclineReasonText');
+      if (reasonEl) reasonEl.textContent = item.declineReason;
+    } else {
+      reasonRow.style.display = 'none';
+    }
+  }
+
+  // Show/hide Approve, Decline, and Resolve buttons based on status
   const approveBtn = document.getElementById('liamApproveBtn');
+  const declineBtn = document.getElementById('liamDeclineBtn');
   const resolveBtn = document.getElementById('liamResolveBtn');
   const editBtn    = document.getElementById('liamEditBtn');
+  // Always reset the decline panel when opening modal
+  const declinePanel  = document.getElementById('liamDeclinePanel');
+  const declineReason = document.getElementById('liamDeclineReason');
+  if (declinePanel)  declinePanel.style.display  = 'none';
+  if (declineReason) declineReason.value         = '';
+
   if (item.status === 'pending') {
     if (approveBtn) approveBtn.style.display = '';
+    if (declineBtn) declineBtn.style.display = '';
     if (resolveBtn) resolveBtn.style.display = 'none';
     if (editBtn)    editBtn.style.display    = 'none';
   } else {
     if (approveBtn) approveBtn.style.display = 'none';
+    if (declineBtn) declineBtn.style.display = 'none';
     if (resolveBtn) {
       resolveBtn.style.display = '';
       resolveBtn.textContent = item.status === 'resolved' ? 'Mark as Active' : 'Mark as Resolved';
@@ -330,15 +361,65 @@ window._lostItemAdminSaveEdit = function() {
     });
 };
 
+function _sendLostItemNotification(item, type) {
+  if (!item || !item.userId) return;
+  const db = firebase.firestore();
+  const declinedMsg = item._declineReason
+    ? `Your lost item report "${item.title || 'item'}" was declined. Reason: ${item._declineReason}`
+    : `Your lost item report "${item.title || 'item'}" has been declined by the admin.`;
+  db.collection('notifications').add({
+    userId:        item.userId,
+    type:          type,
+    title:         item.title || 'Your item',
+    lostItemId:    item.id || null,
+    declineReason: item._declineReason || null,
+    message:       type === 'lost_approved'
+                     ? `Your lost item report "${item.title || 'item'}" has been approved and is now visible to everyone.`
+                     : declinedMsg,
+    read:          false,
+    createdAt:     firebase.firestore.FieldValue.serverTimestamp()
+  }).catch(() => {});
+}
+
 window._lostItemAdminApprove = function() {
   if (!_lostItemModalId) return;
+  const item = _lostItemsCurrent.find(i => i.id === _lostItemModalId);
   firebase.firestore().collection('lostItems').doc(_lostItemModalId).update({ status: 'active' }).catch(() => {});
+  if (item) _sendLostItemNotification(item, 'lost_approved');
+  document.getElementById('lostItemAdminModal').style.display = 'none';
+};
+
+window._lostItemAdminShowDecline = function() {
+  const panel = document.getElementById('liamDeclinePanel');
+  if (panel) panel.style.display = 'flex';
+};
+
+window._lostItemAdminHideDecline = function() {
+  const panel  = document.getElementById('liamDeclinePanel');
+  const reason = document.getElementById('liamDeclineReason');
+  if (panel)  panel.style.display = 'none';
+  if (reason) reason.value = '';
+};
+
+window._lostItemAdminConfirmDecline = function() {
+  if (!_lostItemModalId) return;
+  const reason = (document.getElementById('liamDeclineReason')?.value || '').trim();
+  if (!reason) {
+    alert('Please enter a reason for declining.');
+    return;
+  }
+  const item = _lostItemsCurrent.find(i => i.id === _lostItemModalId);
+  firebase.firestore().collection('lostItems').doc(_lostItemModalId)
+    .update({ status: 'declined', declineReason: reason }).catch(() => {});
+  if (item) _sendLostItemNotification({ ...item, _declineReason: reason }, 'lost_declined');
   document.getElementById('lostItemAdminModal').style.display = 'none';
 };
 
 window._lostItemAdminApproveId = function(id) {
   if (!confirm('Approve this lost item? It will become visible to all users.')) return;
+  const item = _lostItemsCurrent.find(i => i.id === id);
   firebase.firestore().collection('lostItems').doc(id).update({ status: 'active' }).catch(() => {});
+  if (item) _sendLostItemNotification(item, 'lost_approved');
 };
 
 window._lostItemAdminResolve = function() {
@@ -352,13 +433,17 @@ window._lostItemAdminResolve = function() {
 window._lostItemAdminDelete = function() {
   if (!_lostItemModalId) return;
   if (!confirm('Delete this lost item report? This cannot be undone.')) return;
+  const item = _lostItemsCurrent.find(i => i.id === _lostItemModalId);
   firebase.firestore().collection('lostItems').doc(_lostItemModalId).delete().catch(() => {});
+  if (item && item.status === 'pending') _sendLostItemNotification(item, 'lost_declined');
   document.getElementById('lostItemAdminModal').style.display = 'none';
 };
 
 window._lostItemAdminDeleteId = function(id) {
   if (!confirm('Delete this lost item report? This cannot be undone.')) return;
+  const item = _lostItemsCurrent.find(i => i.id === id);
   firebase.firestore().collection('lostItems').doc(id).delete().catch(() => {});
+  if (item && item.status === 'pending') _sendLostItemNotification(item, 'lost_declined');
 };
 
 // Open or create a chat specifically about a reported lost item

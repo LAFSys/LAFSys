@@ -283,9 +283,13 @@ const firebaseConfig = {
     messagingSenderId: "103945210522",
     appId: "1:103945210522:web:f5a51c84653a0cab10ed23"
 };
-firebase.initializeApp(firebaseConfig);
-const auth = firebase.auth();
-const db   = firebase.firestore();
+// Use a named app so admin auth state is stored separately from user auth.
+// Firebase keys IndexedDB by app name, so '[DEFAULT]' (user) and 'admin'
+// never overwrite each other across browser tabs.
+const _adminApp = firebase.apps.find(a => a.name === 'admin')
+    || firebase.initializeApp(firebaseConfig, 'admin');
+const auth = _adminApp.auth();
+const db   = _adminApp.firestore();
 
 // ── EmailJS ───────────────────────────────────────────────────────────────────
 const EMAILJS_PUBLIC_KEY  = 'htcONvQFGnnjNMtOf';
@@ -303,13 +307,6 @@ let isCreating   = false;
 const OTP_TTL      = 5 * 60 * 1000;
 const OTP_COOLDOWN = 30 * 1000;
 
-// ── Sign out any lingering Firebase Auth session on page load ─────────────────
-// This ensures opening admin-login.html always requires a fresh manual login.
-auth.onAuthStateChanged(async user => {
-    if (user && !isCreating) {
-        await auth.signOut().catch(() => {});
-    }
-});
 
 // ── Tab switching ─────────────────────────────────────────────────────────────
 function showTab(tab) {

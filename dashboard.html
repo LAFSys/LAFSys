@@ -287,6 +287,54 @@
             background-color: #f8fafc;
             border-radius: 0.5rem;
         }
+
+        /* ── Pagination ── */
+        #pagination-controls { margin-top: 2rem; }
+        .pg-wrap {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.375rem;
+            flex-wrap: wrap;
+        }
+        .pg-pages { display: flex; gap: 0.25rem; flex-wrap: wrap; justify-content: center; }
+        .pg-btn {
+            min-width: 2.25rem;
+            height: 2.25rem;
+            padding: 0 0.625rem;
+            border: 1.5px solid #cbd5e1;
+            border-radius: 0.375rem;
+            background: #fff;
+            color: #1a2e6b;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.15s, border-color 0.15s, color 0.15s;
+        }
+        .pg-btn:hover:not(:disabled) {
+            background: #e8ecf8;
+            border-color: #1a2e6b;
+        }
+        .pg-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .pg-btn.pg-active {
+            background: #1a2e6b;
+            color: #fff;
+            border-color: #1a2e6b;
+        }
+        .pg-nav { font-size: 0.8125rem; }
+        .pg-ellipsis {
+            display: flex;
+            align-items: center;
+            padding: 0 0.25rem;
+            color: #94a3b8;
+            font-size: 0.875rem;
+        }
+        .pg-info {
+            text-align: center;
+            font-size: 0.8125rem;
+            color: #64748b;
+            margin-top: 0.625rem;
+        }
         
         .error {
             color: #b91c1c;
@@ -555,6 +603,28 @@
             justify-content: center;
             padding: 0 4px;
         }
+        .usb-notif-badge {
+            position: absolute;
+            top: -10px;
+            right: -15px;
+            background-color: #ef4444;
+            color: #fff;
+            border-radius: 50%;
+            min-width: 18px;
+            height: 18px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2px;
+            animation: usb-pulse 1.5s infinite;
+        }
+        @keyframes usb-pulse {
+            0%   { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); }
+            70%  { box-shadow: 0 0 0 6px rgba(239,68,68,0); }
+            100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); }
+        }
         .usb-divider {
             height: 1px;
             background: rgba(255,255,255,0.07);
@@ -803,12 +873,11 @@
     </style>
 </head>
 <body>
-    <script type="module" src="js/firebase.js"></script>
-
     <!-- Auth guard: redirect to login if not signed in -->
     <script>
     (function() {
         let _unreadListener = null;
+        let _guestNavTimer  = null;
 
         function waitForAuth(retries) {
             if (typeof firebase === 'undefined' || !firebase.auth) {
@@ -818,9 +887,11 @@
             firebase.auth().onAuthStateChanged(function(user) {
                 const floatingBtn = document.getElementById('floatingChatBtn');
                 if (user) {
+                    // Cancel any pending "show guest nav" timer
+                    if (_guestNavTimer) { clearTimeout(_guestNavTimer); _guestNavTimer = null; }
+
                     const nameEl = document.getElementById('userDisplayName');
                     if (nameEl) nameEl.textContent = user.displayName || user.email;
-                    document.getElementById('guestNav').style.display = 'none';
                     if (floatingBtn) floatingBtn.style.display = 'flex';
 
                     // Watch for unread admin replies across page loads
@@ -849,13 +920,19 @@
                             if (badge) badge.style.display = hasUnread ? 'flex' : 'none';
                         }, () => {});
                 } else {
-                    document.getElementById('guestNav').style.display = 'flex';
-                    if (floatingBtn) floatingBtn.style.display = 'none';
-                    if (_unreadListener) { _unreadListener(); _unreadListener = null; }
+                    // Debounce: wait 1.2 s before showing "Login / Register" so the
+                    // normal null-first auth state doesn't flash as a false logout.
+                    if (_guestNavTimer) clearTimeout(_guestNavTimer);
+                    _guestNavTimer = setTimeout(() => {
+                        if (!firebase.auth().currentUser) {
+                            if (floatingBtn) floatingBtn.style.display = 'none';
+                            if (_unreadListener) { _unreadListener(); _unreadListener = null; }
+                        }
+                    }, 1200);
                 }
             });
         }
-        waitForAuth(20);
+        waitForAuth(80); // 80 × 100 ms = 8 s — gives CDN scripts time to load
     })();
 
     function doLogout() {
@@ -871,10 +948,6 @@
             align-items: center;
             gap: 0.6rem;
             font-size: 0.875rem;
-        }
-        .guest-nav {
-            display: none;
-            align-items: center;
         }
         .btn-login {
             padding: 0.5rem 1.25rem;
@@ -1215,12 +1288,15 @@
             </li>
             <li class="usb-item" id="usbNavLost">
                 <span class="usb-icon">📋</span>
-                <span>Lost Items</span>
+                <span style="position:relative;">Lost Items
+                    <span id="usbLostBadge" class="usb-notif-badge" style="display:none">0</span>
+                </span>
             </li>
             <li class="usb-item" id="usbNavInbox" style="display:none">
                 <span class="usb-icon">💬</span>
-                <span>Inbox</span>
-                <span class="usb-badge" id="usbInboxBadge"></span>
+                <span style="position:relative;">Inbox
+                    <span class="usb-notif-badge" id="usbInboxBadge" style="display:none">0</span>
+                </span>
             </li>
             <li class="usb-item" id="usbNavLogin">
                 <span class="usb-icon">🔑</span>
@@ -1246,9 +1322,6 @@
             </button>
         </div>
         <span id="userDisplayName" style="display:none"></span>
-        <div class="guest-nav" id="guestNav">
-            <a href="login.html" class="btn-login">Login / Register</a>
-        </div>
     </header>
 
     <main class="container">
@@ -1296,6 +1369,7 @@
             <div class="items-grid" id="items-container">
                 <!-- Items will be loaded here by JavaScript -->
             </div>
+            <div id="pagination-controls"></div>
         </section>
     </main>
 
@@ -1558,7 +1632,10 @@
         
         // Fetch and display items from Firestore with real-time updates
         let unsubscribeSnapshot = null;
-        
+        let _allRawItems  = [];  // all active items from Firestore
+        let _currentPage  = 1;
+        const ITEMS_PER_PAGE = 15; // 5 columns × 3 rows
+
         async function fetchAndDisplayItems() {
             try {
                 console.log('Starting to fetch items with real-time updates');
@@ -1585,119 +1662,30 @@
                 }
                 
                 // Listen for real-time updates from Firestore
-                console.log('Setting up real-time listener for Firestore');
                 unsubscribeSnapshot = db.collection('items')
                     .orderBy('date', 'desc')
-                    .limit(60)
+                    .limit(200)
                     .onSnapshot((querySnapshot) => {
-                    console.log('Real-time update received, document count:', querySnapshot.size);
-                
-                if (querySnapshot.empty) {
-                    console.log('No items found in Firestore');
-                    itemsContainer.innerHTML = '<div class="no-items">No items found in database</div>';
-                    return;
-                }
-                
-                // Start building HTML for all items at once (safer approach)
-                let allItemsHTML = '';
-                window._itemDataCache = window._itemDataCache || {};
+                    window._itemDataCache = window._itemDataCache || {};
+                    _allRawItems = [];
 
-                // Process each document and build HTML string
-                querySnapshot.forEach(doc => {
-                    const data = doc.data();
-                    const id = doc.id;
-                    
-                    console.log('Processing item:', id);
-                    
-                    const itemStatus = data.status || 'active';
-                    
-                    // Skip items that are no longer available
-                    if (itemStatus === 'claimed' || itemStatus === 'returned' || itemStatus === 'disposed') {
-                        return;
-                    }
-                    
-                    // Handle category filter (grouped)
-                    if (selectedCategory !== 'all') {
-                        const categoryGroups = {
-                            'gadgets':         ['phone', 'laptop', 'gadgets'],
-                            'bags-wallets':    ['wallet', 'bag', 'bags-wallets'],
-                            'accessories':     ['keys', 'jewelry', 'accessories'],
-                            'garments':        ['clothing', 'garments'],
-                            'eyewear':         ['eyewear'],
-                            'cosmetics':       ['cosmetics'],
-                            'supplies':        ['supplies'],
-                            'umbrella':        ['umbrella'],
-                            'toys':            ['toys'],
-                            'food-containers': ['food-containers'],
-                            'cash-cards':      ['cash-cards'],
-                            'documents':       ['documents'],
-                            'other':           ['other']
-                        };
-                        const allowed = categoryGroups[selectedCategory] || [selectedCategory];
-                        if (!allowed.includes((data.category || '').toLowerCase())) return;
-                    }
-                    
-                    // Format date
-                    const dateFound = data.date ? new Date(data.date) : null;
-                    const formattedDate = dateFound ? dateFound.toLocaleDateString() : 'Unknown date';
-                    
-                    // Use the actual image URL from Firebase Storage or fallback to placeholder
-                    let imageUrl = data.image || 'https://via.placeholder.com/300x200?text=No+Image';
-                    
-                    // Ensure we're not using a placeholder when we actually have an uploaded image
-                    if (imageUrl.startsWith('https://via.placeholder.com') && data.image && data.image.trim() !== '') {
-                        imageUrl = data.image;
-                    }
-                    
-                    // Check if the image is a data URL (starts with data:image)
-                    const isDataUrl = typeof imageUrl === 'string' && imageUrl.startsWith('data:image');
-                    
-                    // If it's a very long data URL, add special handling
-                    if (isDataUrl) {
-                        console.log(`Item ${id} uses a data URL for image`);
-                    } else {
-                        console.log(`Item ${id} uses an external URL for image:`, imageUrl);
-                    }
-                    
-                    // Determine the item status and the corresponding badge style
-                    let statusBadge = '';
-                    
-                    if (itemStatus === 'soon') {
-                        statusBadge = `<div class="status-badge status-soon">Disposal Soon</div>`;
-                    } else {
-                        statusBadge = `<div class="status-badge status-active">Active</div>`;
-                    }
-                    
-                    // Cache item data so modal opens instantly without re-fetching
-                    window._itemDataCache[id] = { id, ...data, _imageUrl: imageUrl };
+                    querySnapshot.forEach(doc => {
+                        const data = doc.data();
+                        const id   = doc.id;
+                        const itemStatus = data.status || 'active';
+                        if (itemStatus === 'claimed' || itemStatus === 'returned' || itemStatus === 'disposed') return;
 
-                    // Build HTML for this item
-                    allItemsHTML += `
-                        <div class="item-card" data-item-id="${id}" onclick="_showFoundItemModal('${id}')" style="cursor:pointer;">
-                            <div class="item-image">
-                                <img src="${imageUrl}" alt="${data.title || 'Unknown item'}" onerror="this.src='https://via.placeholder.com/300x200?text=Image+Error'">
-                                ${statusBadge}
-                            </div>
-                            <div class="item-content">
-                                <h3 class="item-title">${data.title || 'Unnamed Item'}</h3>
-                                <div class="item-category">${data.category || 'Uncategorized'}</div>
-                                <div class="item-details">
-                                    <div>📍 ${data.location || 'Unknown location'}</div>
-                                    <div>📅 ${formattedDate}</div>
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                });
-                
-                // Update the container with all items at once
-                itemsContainer.innerHTML = allItemsHTML;
-                
-                console.log(`Successfully loaded ${querySnapshot.size} items`);
-                
+                        const dateFound     = data.date ? (typeof data.date.toDate === 'function' ? data.date.toDate() : new Date(data.date)) : null;
+                        const formattedDate = dateFound ? dateFound.toLocaleDateString() : 'Unknown date';
+                        const imageUrl      = data.image || 'https://via.placeholder.com/300x200?text=No+Image';
+
+                        window._itemDataCache[id] = { id, ...data, _imageUrl: imageUrl };
+                        _allRawItems.push({ id, data, imageUrl, formattedDate, itemStatus });
+                    });
+
+                    _renderPage(1);
+
                 }, (error) => {
-                    // Error callback for onSnapshot
-                    console.error('Error in real-time listener:', error);
                     const itemsContainer = document.getElementById('items-container');
                     if (itemsContainer) {
                         itemsContainer.innerHTML = `<div class="error">Error loading items: ${error.message}</div>`;
@@ -1713,6 +1701,112 @@
             }
         }
         
+        // ── Pagination ───────────────────────────────────────────────────────
+        const _CATEGORY_GROUPS = {
+            'gadgets':         ['phone', 'laptop', 'gadgets'],
+            'bags-wallets':    ['wallet', 'bag', 'bags-wallets'],
+            'accessories':     ['keys', 'jewelry', 'accessories'],
+            'garments':        ['clothing', 'garments'],
+            'eyewear':         ['eyewear'],
+            'cosmetics':       ['cosmetics'],
+            'supplies':        ['supplies'],
+            'umbrella':        ['umbrella'],
+            'toys':            ['toys'],
+            'food-containers': ['food-containers'],
+            'cash-cards':      ['cash-cards'],
+            'documents':       ['documents'],
+            'other':           ['other']
+        };
+
+        function _getFilteredItems() {
+            const sel = (document.getElementById('categoryFilter') || {}).value || 'all';
+            if (sel === 'all') return _allRawItems;
+            const allowed = _CATEGORY_GROUPS[sel] || [sel];
+            return _allRawItems.filter(item =>
+                allowed.includes((item.data.category || '').toLowerCase())
+            );
+        }
+
+        function _renderPage(page) {
+            const filtered   = _getFilteredItems();
+            const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
+            _currentPage     = Math.min(Math.max(1, page), totalPages);
+
+            const start     = (_currentPage - 1) * ITEMS_PER_PAGE;
+            const pageItems = filtered.slice(start, start + ITEMS_PER_PAGE);
+
+            const container = document.getElementById('items-container');
+            if (!container) return;
+
+            if (filtered.length === 0) {
+                container.innerHTML = '<div class="no-items">No items found.</div>';
+                const pc = document.getElementById('pagination-controls');
+                if (pc) pc.innerHTML = '';
+                return;
+            }
+
+            let html = '';
+            pageItems.forEach(({ id, data, imageUrl, formattedDate, itemStatus }) => {
+                const statusBadge = itemStatus === 'soon'
+                    ? `<div class="status-badge status-soon">Disposal Soon</div>`
+                    : `<div class="status-badge status-active">Active</div>`;
+
+                html += `
+                    <div class="item-card" data-item-id="${id}" onclick="_showFoundItemModal('${id}')" style="cursor:pointer;">
+                        <div class="item-image">
+                            <img src="${imageUrl}" alt="${data.title || 'Unknown item'}" onerror="this.src='https://via.placeholder.com/300x200?text=Image+Error'">
+                            ${statusBadge}
+                        </div>
+                        <div class="item-content">
+                            <h3 class="item-title">${data.title || 'Unnamed Item'}</h3>
+                            <div class="item-category">${data.category || 'Uncategorized'}</div>
+                            <div class="item-details">
+                                <div>📍 ${data.location || 'Unknown location'}</div>
+                                <div>📅 ${formattedDate}</div>
+                            </div>
+                        </div>
+                    </div>`;
+            });
+            container.innerHTML = html;
+            _renderPaginationControls(totalPages, filtered.length);
+        }
+
+        function _renderPaginationControls(totalPages, totalItems) {
+            const pc = document.getElementById('pagination-controls');
+            if (!pc) return;
+            if (totalPages <= 1) { pc.innerHTML = ''; return; }
+
+            const p = _currentPage;
+            let btns = '';
+
+            // Always show first page
+            btns += `<button class="pg-btn${p===1?' pg-active':''}" onclick="_renderPage(1)">1</button>`;
+
+            if (p > 3) btns += `<span class="pg-ellipsis">…</span>`;
+
+            for (let i = Math.max(2, p - 1); i <= Math.min(totalPages - 1, p + 1); i++) {
+                btns += `<button class="pg-btn${p===i?' pg-active':''}" onclick="_renderPage(${i})">${i}</button>`;
+            }
+
+            if (p < totalPages - 2) btns += `<span class="pg-ellipsis">…</span>`;
+
+            // Always show last page
+            if (totalPages > 1) {
+                btns += `<button class="pg-btn${p===totalPages?' pg-active':''}" onclick="_renderPage(${totalPages})">${totalPages}</button>`;
+            }
+
+            const start = (_currentPage - 1) * ITEMS_PER_PAGE + 1;
+            const end   = Math.min(_currentPage * ITEMS_PER_PAGE, totalItems);
+
+            pc.innerHTML = `
+                <div class="pg-wrap">
+                    <button class="pg-btn pg-nav" onclick="_renderPage(${p - 1})" ${p <= 1 ? 'disabled' : ''}>&#8592; Prev</button>
+                    <div class="pg-pages">${btns}</div>
+                    <button class="pg-btn pg-nav" onclick="_renderPage(${p + 1})" ${p >= totalPages ? 'disabled' : ''}>Next &#8594;</button>
+                </div>
+                <div class="pg-info">Showing ${start}–${end} of ${totalItems} items</div>`;
+        }
+
         // ── Found Item Detail Modal ──────────────────────────────────────────
         function _showFoundItemModal(itemId) {
             // Remove any already-open modal first (prevents stacking / stuck close buttons)
@@ -1897,7 +1991,7 @@
             const categoryFilterEl = document.getElementById('categoryFilter');
             if (categoryFilterEl) {
                 categoryFilterEl.addEventListener('change', () => {
-                    fetchAndDisplayItems();
+                    _renderPage(1);
                 });
             }
         });
@@ -2277,6 +2371,7 @@
             }
 
             // Sync auth state → sidebar user row
+            let _sidebarGuestTimer = null;
             const waitAuth = setInterval(() => {
                 if (window.firebase && firebase.auth) {
                     clearInterval(waitAuth);
@@ -2288,6 +2383,7 @@
                         const inboxItem    = document.getElementById('usbNavInbox');
                         const loginItem    = document.getElementById('usbNavLogin');
                         if (user) {
+                            if (_sidebarGuestTimer) { clearTimeout(_sidebarGuestTimer); _sidebarGuestTimer = null; }
                             // Get display name from existing element (already resolved by main auth handler)
                             const name = document.getElementById('userDisplayName')?.textContent
                                 || user.displayName || user.email || 'User';
@@ -2298,11 +2394,17 @@
                             if (inboxItem)     inboxItem.style.display    = '';
                             if (loginItem)     loginItem.style.display    = 'none';
                         } else {
-                            if (userRow)       userRow.style.display      = 'none';
-                            if (logoutItem)    logoutItem.style.display   = 'none';
-                            if (logoutDivider) logoutDivider.style.display= 'none';
-                            if (inboxItem)     inboxItem.style.display    = 'none';
-                            if (loginItem)     loginItem.style.display    = '';
+                            // Same debounce as the header: wait before showing guest state
+                            if (_sidebarGuestTimer) clearTimeout(_sidebarGuestTimer);
+                            _sidebarGuestTimer = setTimeout(() => {
+                                if (!firebase.auth().currentUser) {
+                                    if (userRow)       userRow.style.display      = 'none';
+                                    if (logoutItem)    logoutItem.style.display   = 'none';
+                                    if (logoutDivider) logoutDivider.style.display= 'none';
+                                    if (inboxItem)     inboxItem.style.display    = 'none';
+                                    if (loginItem)     loginItem.style.display    = '';
+                                }
+                            }, 1200);
                         }
                     });
                 }
@@ -2331,7 +2433,6 @@
 
 
     <div id="inboxCenterBackdrop"></div>
-
     <!-- Chat Inbox Panel -->
     <div id="userChatInbox">
         <div id="chatInboxHeader">
@@ -2565,6 +2666,123 @@
             firebase.auth().onAuthStateChanged(user => {
                 if (user) _initInbox(user.uid);
                 else _destroyInbox();
+            });
+        }
+        _waitAndBind(30);
+    })();
+    </script>
+
+    <!-- Lost Items notification badge + toast -->
+    <script>
+    (function() {
+        let _notifUnsub = null;
+
+        function _updateBadge(count) {
+            const badge = document.getElementById('usbLostBadge');
+            if (!badge) return;
+            badge.textContent   = count || '0';
+            badge.style.display = count ? 'flex' : 'none';
+        }
+
+        function _showToast(notif) {
+            const isApproved = notif.type === 'lost_approved';
+            const icon       = isApproved ? '✅' : '❌';
+            const title      = isApproved ? 'Lost Item Approved' : 'Lost Item Declined';
+            const accent     = isApproved ? '#10b981' : '#ef4444';
+
+            let body = notif.message || '';
+            if (!isApproved && notif.declineReason) {
+                body = `Your lost item report "<strong>${notif.title || 'item'}</strong>" was declined.<br><span style="opacity:0.85;">Reason: ${notif.declineReason}</span>`;
+            } else if (isApproved) {
+                body = `Your lost item report "<strong>${notif.title || 'item'}</strong>" has been approved and is now visible to everyone.`;
+            }
+
+            // Backdrop
+            const backdrop = document.createElement('div');
+            backdrop.style.cssText = [
+                'position:fixed', 'inset:0',
+                'background:rgba(0,0,0,0.45)',
+                'z-index:99998'
+            ].join(';');
+
+            const toast = document.createElement('div');
+            toast.style.cssText = [
+                'position:fixed',
+                'top:50%', 'left:50%',
+                'transform:translate(-50%,-50%)',
+                'background:#1e293b', 'color:#fff',
+                'padding:24px 28px', 'border-radius:14px',
+                'box-shadow:0 8px 32px rgba(0,0,0,0.35)',
+                'z-index:99999', 'display:flex', 'align-items:flex-start', 'gap:16px',
+                'font-size:0.92rem', 'width:360px', 'max-width:calc(100vw - 48px)',
+                `border-left:5px solid ${accent}`, 'line-height:1.5'
+            ].join(';');
+            toast.innerHTML = `
+                <span style="font-size:1.8rem;margin-top:2px;flex-shrink:0;">${icon}</span>
+                <div style="flex:1;">
+                    <div style="font-weight:700;font-size:1rem;margin-bottom:6px;">${title}</div>
+                    <div style="opacity:0.9;">${body}</div>
+                </div>
+                <button style="background:none;border:none;color:#fff;opacity:0.55;font-size:1.3rem;line-height:1;cursor:pointer;flex-shrink:0;padding:0;margin-top:1px;" title="Dismiss">×</button>`;
+
+            function _dismiss() {
+                backdrop.remove();
+                toast.remove();
+            }
+            toast.querySelector('button').addEventListener('click', _dismiss);
+            backdrop.addEventListener('click', _dismiss);
+
+            document.body.appendChild(backdrop);
+            document.body.appendChild(toast);
+        }
+
+        function _init(uid) {
+            if (_notifUnsub) _notifUnsub();
+            _seenIds = null;
+
+            // Just track unread count for the badge — no real-time toasting
+            _notifUnsub = firebase.firestore()
+                .collection('notifications')
+                .where('userId', '==', uid)
+                .where('read', '==', false)
+                .onSnapshot(snap => {
+                    _updateBadge(snap.size);
+                }, () => {});
+
+            // When user clicks Lost Items: show toasts for all unread, then mark read
+            document.getElementById('usbNavLost').addEventListener('click', () => {
+                firebase.firestore()
+                    .collection('notifications')
+                    .where('userId', '==', uid)
+                    .where('read', '==', false)
+                    .get()
+                    .then(snap => {
+                        if (snap.empty) return;
+                        const db    = firebase.firestore();
+                        const batch = db.batch();
+                        snap.forEach((d, i) => {
+                            // Stagger multiple toasts so they don't overlap
+                            setTimeout(() => _showToast({ _id: d.id, ...d.data() }), i * 600);
+                            batch.update(d.ref, { read: true });
+                        });
+                        batch.commit().catch(() => {});
+                    }).catch(() => {});
+            });
+        }
+
+        function _destroy() {
+            if (_notifUnsub) { _notifUnsub(); _notifUnsub = null; }
+            _updateBadge(0);
+        }
+
+        function _waitAndBind(retries) {
+            if (!window.firebase || !firebase.apps || !firebase.apps.length) {
+                if (retries > 0) setTimeout(() => _waitAndBind(retries - 1), 150);
+                return;
+            }
+            firebase.auth().onAuthStateChanged(user => {
+                if (user) _init(user.uid);
+                else _destroy();
             });
         }
         _waitAndBind(30);
