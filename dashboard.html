@@ -459,6 +459,7 @@
                 transform: translateX(-100%);
                 transition: transform 0.25s ease;
                 z-index: 1050;
+                width: 75vw !important;    /* 75% drawer on mobile */
             }
             #userSidebar.mobile-open {
                 transform: translateX(0);
@@ -472,6 +473,20 @@
             main.container {
                 margin-left: 0 !important;
                 padding: 1rem 0.75rem !important;
+            }
+            /* Header hide-on-scroll for mobile */
+            .header {
+                position: fixed !important;
+                top: 0; left: 0; right: 0;
+                z-index: 999;
+                transition: transform 0.3s ease !important;
+            }
+            .header.header-hidden {
+                transform: translateY(-100%);
+            }
+            /* Compensate for fixed header — updated by JS */
+            body.mobile-header-offset main.container {
+                padding-top: var(--mobile-header-h, 90px) !important;
             }
             .items-grid {
                 grid-template-columns: repeat(2, 1fr) !important;
@@ -502,6 +517,10 @@
             }
             .header {
                 padding-left: 56px !important;
+            }
+            /* Hide search from header on mobile — it moves into the sidebar */
+            .header .search-container {
+                display: none !important;
             }
         }
 
@@ -653,6 +672,66 @@
         .header   { margin-left: 0; position: sticky; top: 0; z-index: 999; }
         /* Sidebar starts below the header (top value set by JS once header height is known) */
         #userSidebar { top: 0; }
+
+        /* Sidebar search — only visible on mobile */
+        #usbSearch { display: none; }
+        @media (max-width: 680px) {
+            #usbSearch {
+                display: flex;
+                flex-direction: column;
+                gap: 0.6rem;
+                padding: 0.85rem 1rem 0.75rem;
+                border-bottom: 1px solid rgba(255,255,255,0.1);
+            }
+            #usbSearchRow {
+                display: flex;
+                gap: 0.5rem;
+            }
+            #usbSearchInput {
+                flex: 1;
+                padding: 0.6rem 0.85rem;
+                border: 1.5px solid rgba(255,255,255,0.25);
+                border-radius: 8px;
+                background: rgba(255,255,255,0.12);
+                color: #fff;
+                font-size: 0.95rem;
+            }
+            #usbSearchInput::placeholder { color: rgba(255,255,255,0.5); }
+            #usbSearchInput:focus { outline: none; border-color: #f07316; background: rgba(255,255,255,0.18); }
+            #usbSearchBtn {
+                padding: 0.6rem 1rem;
+                background: #f07316;
+                border: none;
+                border-radius: 8px;
+                cursor: pointer;
+                font-size: 1rem;
+                flex-shrink: 0;
+                color: #fff;
+            }
+            #usbImageSearchBtn {
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
+                padding: 0.6rem 1rem;
+                background: rgba(255,255,255,0.1);
+                border: 1.5px solid rgba(255,255,255,0.25);
+                border-radius: 8px;
+                color: #fff;
+                font-size: 0.9rem;
+                cursor: pointer;
+                width: 100%;
+                justify-content: center;
+                transition: background 0.15s;
+            }
+            #usbImageSearchBtn:hover { background: rgba(255,255,255,0.2); }
+            /* Wider nav items to use the full drawer width */
+            .usb-item {
+                padding: 0.85rem 1.25rem !important;
+                font-size: 1rem !important;
+            }
+            .usb-icon { font-size: 1.3rem !important; }
+            .usb-logout { padding: 0.75rem 1.25rem !important; font-size: 0.95rem !important; }
+        }
         /* Main content offset right for sidebar */
         main.container { margin-left: 220px; max-width: none; padding: 1.5rem 2rem; }
 
@@ -1281,6 +1360,18 @@
             <div class="usb-user-avatar">👤</div>
             <div class="usb-user-name" id="usbUserName"></div>
         </div>
+
+        <!-- Mobile-only search (hidden on desktop via CSS) -->
+        <div id="usbSearch">
+            <div id="usbSearchRow">
+                <input id="usbSearchInput" type="text" placeholder="Search items…" autocomplete="off">
+                <button id="usbSearchBtn" title="Search">🔍</button>
+            </div>
+            <button id="usbImageSearchBtn">
+                <span>🖼</span> Search by Image
+            </button>
+        </div>
+
         <ul class="usb-nav">
             <li class="usb-item active" id="usbNavFound">
                 <span class="usb-icon">🔎</span>
@@ -2307,12 +2398,64 @@
             document.getElementById('userSidebar').classList.add('mobile-open');
             document.getElementById('sidebarOverlay').classList.add('visible');
             document.getElementById('sidebarToggle').textContent = '✕';
+            // Always show header while sidebar is open so user can see context
+            document.querySelector('.header')?.classList.remove('header-hidden');
         }
         function _closeMobileSidebar() {
             document.getElementById('userSidebar').classList.remove('mobile-open');
             document.getElementById('sidebarOverlay').classList.remove('visible');
             document.getElementById('sidebarToggle').textContent = '☰';
+            // Re-hide header if user is still scrolled down
+            if (window.scrollY > 10) {
+                document.querySelector('.header')?.classList.add('header-hidden');
+            }
         }
+
+        // ── Mobile header hide-on-scroll ──────────────────────────────────
+        (function() {
+            const MOBILE_BP = 680;
+
+            function _isMobile() { return window.innerWidth <= MOBILE_BP; }
+
+            function _applyHeaderOffset() {
+                if (!_isMobile()) return;
+                const header = document.querySelector('.header');
+                if (!header) return;
+                const h = header.getBoundingClientRect().height;
+                document.documentElement.style.setProperty('--mobile-header-h', h + 'px');
+                document.body.classList.add('mobile-header-offset');
+            }
+
+            function _hideHeader() {
+                document.querySelector('.header')?.classList.add('header-hidden');
+                _headerPinned = false;
+            }
+            function _showHeader() {
+                document.querySelector('.header')?.classList.remove('header-hidden');
+            }
+
+            window.addEventListener('scroll', () => {
+                if (!_isMobile()) return;
+                if (window.scrollY <= 10) {
+                    _showHeader(false);
+                } else {
+                    _hideHeader();
+                }
+            }, { passive: true });
+
+            window.addEventListener('resize', () => {
+                if (!_isMobile()) {
+                    // Restore desktop styles
+                    document.querySelector('.header')?.classList.remove('header-hidden');
+                    document.body.classList.remove('mobile-header-offset');
+                    _headerPinned = false;
+                } else {
+                    _applyHeaderOffset();
+                }
+            });
+
+            document.addEventListener('DOMContentLoaded', _applyHeaderOffset);
+        })();
 
         document.addEventListener('DOMContentLoaded', () => {
             _syncSidebarPosition();
@@ -2324,6 +2467,41 @@
                 sidebar.classList.contains('mobile-open') ? _closeMobileSidebar() : _openMobileSidebar();
             });
             document.getElementById('sidebarOverlay').addEventListener('click', _closeMobileSidebar);
+
+            // ── Sidebar search delegates to the real header inputs ──
+            const _usbInput = document.getElementById('usbSearchInput');
+            const _realInput = document.getElementById('searchInput');
+
+            // Keep sidebar input in sync with real input (e.g. refresh clears it)
+            if (_realInput && _usbInput) {
+                new MutationObserver(() => {
+                    if (_usbInput.value !== _realInput.value) _usbInput.value = _realInput.value;
+                }).observe(_realInput, { attributes: true, attributeFilter: ['value'] });
+
+                // Mirror typing into the real input and trigger input event (search.js listens there)
+                _usbInput.addEventListener('input', () => {
+                    _realInput.value = _usbInput.value;
+                    _realInput.dispatchEvent(new Event('input', { bubbles: true }));
+                });
+                _usbInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        _realInput.value = _usbInput.value;
+                        document.getElementById('searchButton')?.click();
+                    }
+                });
+            }
+
+            document.getElementById('usbSearchBtn')?.addEventListener('click', () => {
+                if (_realInput && _usbInput) _realInput.value = _usbInput.value;
+                document.getElementById('searchButton')?.click();
+            });
+
+            // Image search — just trigger the real button
+            document.getElementById('usbImageSearchBtn')?.addEventListener('click', () => {
+                document.getElementById('imageSearchBtn')?.click();
+                _closeMobileSidebar();
+            });
 
             // Initially hide lost section (found is default)
             const lostSec = document.getElementById('lostItemsSection');
