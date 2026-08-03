@@ -818,6 +818,16 @@
         #userChatInbox.inbox-centered #chatInboxBody {
             max-height: 520px;
         }
+        @media (max-width: 680px) {
+            #userChatInbox.inbox-centered {
+                left: 50%;
+                width: calc(100vw - 32px);
+                max-height: 80vh;
+            }
+            #userChatInbox.inbox-centered #chatInboxBody {
+                max-height: 60vh;
+            }
+        }
         #chatInboxHeader {
             background: #1e293b;
             color: #fff;
@@ -2605,7 +2615,7 @@
     <script src="js/chat-input-fix.js"></script>
 
     <!-- Improved image analysis and search -->
-    <script src="js/improvedImageAnalyzer.js?v=5.0"></script>
+    <script src="js/improvedImageAnalyzer.js?v=9.1"></script>
     <script src="js/cloudVision.js?v=4.0"></script>
     <script src="js/accurateImageSearch.js?v=5.0"></script>
 

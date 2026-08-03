@@ -156,11 +156,13 @@ class ImprovedImageAnalyzer {
       // This ensures identical images produce identical fingerprints
       const uploadedFeatures = await this._getItemImageFeatures_fromImg(img);
 
-      // Compute rotated fingerprints so a physically rotated photo of the same item
-      // still scores as a near-exact match. dHash encodes horizontal differences, so
-      // a 90° rotation changes the hash structure — we must re-draw then re-hash.
+      // Compute rotated fingerprints so a physically rotated or tilted photo of the
+      // same item still scores as a near-exact match.
+      // 90°/270° handle portrait↔landscape flips; 45°/135° handle diagonal tilts.
       const rot90Fingerprint  = await this._computeRotatedFingerprint(img,  90);
       const rot270Fingerprint = await this._computeRotatedFingerprint(img, 270);
+      const rot45Fingerprint  = await this._computeRotatedFingerprint(img,  45);
+      const rot135Fingerprint = await this._computeRotatedFingerprint(img, 135);
 
       // Extract features for label/color/shape analysis
       const features = await this._extractFeatures(img);
@@ -191,7 +193,9 @@ class ImprovedImageAnalyzer {
         _colorHistogram: uploadedFeatures.colorHistogram,
         _pixelData: uploadedFeatures.pixelData,
         _rot90Fingerprint:  rot90Fingerprint,
-        _rot270Fingerprint: rot270Fingerprint
+        _rot270Fingerprint: rot270Fingerprint,
+        _rot45Fingerprint:  rot45Fingerprint,
+        _rot135Fingerprint: rot135Fingerprint
       };
     } catch (error) {
       console.error('Error in improved image analysis:', error);
@@ -249,6 +253,48 @@ class ImprovedImageAnalyzer {
       // Rotation fingerprints — computed once at upload time, used for every item comparison
       const rot90Fingerprint        = analysisResults._rot90Fingerprint     || null;
       const rot270Fingerprint       = analysisResults._rot270Fingerprint    || null;
+      const rot45Fingerprint        = analysisResults._rot45Fingerprint     || null;
+      const rot135Fingerprint       = analysisResults._rot135Fingerprint    || null;
+
+      // ── Background hue detection ─────────────────────────────────────────────
+      // When a bbox crop was applied (fullColorHist ≠ uploadedColorHist), compare
+      // the two histograms.  A colour that is LESS present in the bbox crop than in
+      // the full image comes from outside the bbox (the background), not the subject.
+      // We record that hue so we can later penalise stored items whose dominant colour
+      // matches the query's background (e.g. a red background must not boost a Red Ballpen).
+      const hasBboxCrop = !!analysisResults._fullColorHistogram;
+      let queryBgHue = -1; // -1 = no background colour detected
+
+      if (hasBboxCrop &&
+          uploadedColorHist.length > 0 &&
+          fullColorHist.length === uploadedColorHist.length) {
+
+        // Find the most dominant bin in the FULL image histogram
+        let domBin = 0, domVal = 0;
+        for (let i = 0; i < fullColorHist.length; i++) {
+          if (fullColorHist[i] > domVal) { domVal = fullColorHist[i]; domBin = i; }
+        }
+
+        // Only flag a colour as background if it's substantial (≥12% of full image)
+        if (domVal >= 0.12) {
+          const bboxVal = uploadedColorHist[domBin] || 0;
+          const ratio   = bboxVal / domVal; // < 1 means less of this colour in the bbox crop
+
+          if (ratio < 0.85) {
+            // Recover approximate hue from bin index
+            // Layout: bin = hBin * sBins * lBins + sBin * lBins + lBin
+            const hBins = 12, sBins = 4, lBins = 4;
+            const hBin = Math.floor(domBin / (sBins * lBins));
+            const sBin = Math.floor((domBin % (sBins * lBins)) / lBins);
+            const lBin = domBin % lBins;
+            // Require chromatic (sBin > 0) and non-near-black (lBin > 0)
+            if (sBin > 0 && lBin > 0) {
+              queryBgHue = (hBin / hBins) * 360;
+              console.log(`[bg-color] Background hue ~${queryBgHue.toFixed(0)}° detected (bin ${domBin}, ratio ${ratio.toFixed(2)}, full ${(domVal*100).toFixed(1)}%)`);
+            }
+          }
+        }
+      }
 
       // Keep annotated labels for semantic Vision matching — filter background labels
       const queryVisionLabels = (analysisResults.labelAnnotations || [])
@@ -271,6 +317,30 @@ class ImprovedImageAnalyzer {
         if (queryOcrTokens.length > 0)
           console.log('Query OCR tokens:', queryOcrTokens.map(t => t.token).join(', '));
       }
+
+      // Extract colour words from the query's Vision web entities.
+      // Web entity detection matches the image against real-world content, so it
+      // identifies the SUBJECT's colour (e.g. "Black" for a black pen) even when
+      // the photo background is a different colour.  Used to break ties between
+      // same-type items that differ only by colour (Black Pen vs Red Ballpen).
+      const ITEM_COLORS = new Set([
+        'black','white','red','blue','green','yellow','orange',
+        'purple','pink','brown','gray','grey','silver','gold',
+        'navy','teal','maroon','beige','tan','violet'
+      ]);
+      const queryColorWords = new Set();
+      const queryWebEntities = [];
+      for (const ent of (analysisResults.visionWebEntities || [])) {
+        const desc = (ent.description || '').toLowerCase().trim();
+        if (!desc) continue;
+        queryWebEntities.push({ description: desc, score: ent.score || 0.5 });
+        for (const c of ITEM_COLORS) {
+          if (desc === c || desc.startsWith(c + ' ') || desc.endsWith(' ' + c))
+            queryColorWords.add(c);
+        }
+      }
+      if (queryColorWords.size > 0)
+        console.log('[color-check] Query colour words from web entities:', [...queryColorWords].join(', '));
 
       // Infer probable category from Vision labels before the item loop
       const inferredCategory = this._inferCategoryFromLabels(queryVisionLabels);
@@ -296,18 +366,39 @@ class ImprovedImageAnalyzer {
           try {
             const itemFeatures = await this._getItemImageFeatures(item.image);
 
-            // Compare ALL available fingerprints (normal, full-image, 90°, 270°) and take
-            // the highest score. This makes physically rotated photos of the same item score
-            // as near-exact matches. Stored items always use full-image features, so we
-            // include the full-image fingerprint to avoid penalising identical uploads.
-            const candidates = [uploadedFingerprint, fullImageFingerprint, rot90Fingerprint, rot270Fingerprint]
-              .filter(Boolean)
-              .map(fp => this._compareFingerprints(fp, itemFeatures.fingerprint));
-            hashScore = Math.max(...candidates);
+            // Compare ALL query fingerprint variants (normal, full-image, 90°, 270°) against
+            // ALL stored fingerprint variants (full image, 75% crop, 55% crop).
+            // This matrix lets a tight-crop user search image match a wider stored photo of
+            // the same item — the center-crop of the stored image aligns with the crop.
+            const queryFPs  = [uploadedFingerprint, fullImageFingerprint, rot90Fingerprint, rot270Fingerprint, rot45Fingerprint, rot135Fingerprint].filter(Boolean);
+            const storedFPs = [itemFeatures.fingerprint, itemFeatures.crop75Fingerprint, itemFeatures.crop55Fingerprint].filter(Boolean);
+            const allScores = [];
+            for (const qfp of queryFPs)
+              for (const sfp of storedFPs)
+                allScores.push(this._compareFingerprints(qfp, sfp));
+            hashScore = allScores.length ? Math.max(...allScores) : 0;
 
             const croppedColor = this._compareColorHistograms(uploadedColorHist, itemFeatures.colorHistogram);
             const fullColor    = this._compareColorHistograms(fullColorHist,     itemFeatures.colorHistogram);
             colorCompareScore  = Math.max(croppedColor, fullColor);
+
+            // Background-colour penalty: if the query's dominant colour was identified as
+            // coming from the background (ratio check above), penalise stored items whose
+            // primary colour matches that background hue.  This prevents a red background
+            // from falsely boosting a "Red Ballpen" when searching for a black pen.
+            if (queryBgHue >= 0 && item.visionColors && item.visionColors.length > 0) {
+              const storedHue = this._computeHue(item.visionColors[0]);
+              if (storedHue >= 0) { // stored item has a chromatic (non-grey) dominant colour
+                const hueDiff = Math.min(
+                  Math.abs(storedHue - queryBgHue),
+                  360 - Math.abs(storedHue - queryBgHue)
+                );
+                if (hueDiff < 40) {
+                  colorCompareScore *= 0.40;
+                  console.log(`[bg-color] "${item.title}" stored hue ${storedHue.toFixed(0)}° ≈ bg hue ${queryBgHue.toFixed(0)}° → color ×0.40`);
+                }
+              }
+            }
 
             // Pixel comparison — try full-image data first (higher precision for exact match)
             const pixelSrc = fullPixelData || uploadedPixelData;
@@ -337,12 +428,14 @@ class ImprovedImageAnalyzer {
             item.visionObjects || [],
             item.visionWebEntities || [],
             queryOcrTokens,
-            item.visionText || ''
+            item.visionText || '',
+            (item.title || '') + ' ' + (item.description || ''),
+            queryWebEntities
           );
         }
 
         // Vision-label → item-title score (works even when item has no stored Vision data)
-        const labelTitleScore = this._calculateLabelTitleScore(item, queryVisionLabels);
+        const labelTitleScore = this._calculateLabelTitleScore(item, queryVisionLabels, queryOcrTokens);
 
         let weightedScore;
         if (visualScore > 0.85) {
@@ -356,16 +449,26 @@ class ImprovedImageAnalyzer {
           // semantic signal, but also keep labelTitleScore (which has synonym expansion)
           // as a fallback for vocabulary mismatches ("writing implement" vs "pen" title).
           const semanticScore = Math.max(visionLabelScore, labelTitleScore);
-          // Color weight is kept very low — a laptop with a red wallpaper has the same
-          // color histogram as a red pen, so color alone must not drive relevance.
-          // Visual (dHash) is reduced vs. semantic: a different-angle photo of the same item
-          // should still match well via labels even when the fingerprint is poor.
-          weightedScore = (
-            semanticScore     * 0.70 +
-            colorCompareScore * 0.10 +
-            visualScore       * 0.13 +
-            categoryScore     * 0.07
-          );
+
+          if (semanticScore >= 0.78) {
+            // Strong semantic match confirmed by Vision. Color gets a larger slice here
+            // so same-type items with different colours (black pen vs red pen) are
+            // correctly ranked — the bbox-cropped colour histogram is the tiebreaker.
+            weightedScore = (
+              semanticScore     * 0.76 +
+              colorCompareScore * 0.14 +
+              visualScore       * 0.07 +
+              categoryScore     * 0.03
+            );
+          } else {
+            // Normal Vision path — balance semantic, color, and visual signals.
+            weightedScore = (
+              semanticScore     * 0.70 +
+              colorCompareScore * 0.10 +
+              visualScore       * 0.13 +
+              categoryScore     * 0.07
+            );
+          }
           // Semantic gate: if we can identify the query object type but this item has no
           // meaningful label overlap at all, suppress it below the filtering threshold so
           // color similarity alone cannot surface unrelated items.
@@ -374,21 +477,50 @@ class ImprovedImageAnalyzer {
           }
         } else {
           // No stored Vision labels — rely on semantic label→title matching, category match,
-          // and color. dHash fingerprint (visualScore) is angle-sensitive and unreliable for
-          // different-angle photos of the same item, so it gets a small weight.
-          // categoryScore is the hidden gem here: when a query label (e.g. "Cosmetics")
-          // matches the item's stored category string ("cosmetics") exactly, it's a 0.70
-          // signal that was previously ignored. Now it gets dedicated weight.
-          weightedScore = (
-            labelTitleScore   * 0.62 +
-            categoryScore     * 0.15 +
-            colorCompareScore * 0.12 +
-            visualScore       * 0.08 +
-            descriptionScore  * 0.03
-          );
+          // color, and visual.
+          if (labelTitleScore >= 0.78) {
+            // A specific label directly matched (or synonym-matched) the item title.
+            // Color gets 20% so same-type items with different colours (e.g. black pen vs
+            // red pen) are ranked correctly — the bbox-cropped colour is the tiebreaker.
+            weightedScore = (
+              labelTitleScore   * 0.72 +
+              colorCompareScore * 0.20 +
+              categoryScore     * 0.06 +
+              visualScore       * 0.02
+            );
+          } else {
+            // Normal no-Vision path — balance all signals.
+            weightedScore = (
+              labelTitleScore   * 0.62 +
+              categoryScore     * 0.15 +
+              colorCompareScore * 0.12 +
+              visualScore       * 0.08 +
+              descriptionScore  * 0.03
+            );
+          }
           // Same semantic gate for the no-Vision fallback path
           if (inferredCategory && labelTitleScore < 0.20) {
             weightedScore = Math.min(weightedScore, 0.30);
+          }
+        }
+
+        // Colour-word gate: if the query's Vision web entities identify a specific colour
+        // (e.g. "Black" for a black pen), use it to reward/penalise items whose title
+        // colour matches/conflicts.  This is the primary tiebreaker for same-type items
+        // that differ only by colour (e.g. "Black Pen" vs "Red Ballpen").
+        if (queryColorWords.size > 0) {
+          const fullText = ((item.title || '') + ' ' + (item.description || '')).toLowerCase();
+          const itemColors = [...ITEM_COLORS].filter(c => fullText.includes(c));
+          if (itemColors.length > 0) {
+            const matched    = itemColors.filter(c => queryColorWords.has(c));
+            const conflicted = itemColors.filter(c => !queryColorWords.has(c));
+            if (matched.length > 0 && conflicted.length === 0) {
+              weightedScore = Math.min(0.99, weightedScore * 1.15);  // colour confirmed → boost
+              console.log(`[color-check] "${item.title}" colour CONFIRMED (${matched.join(',')}) → ×1.15`);
+            } else if (conflicted.length > 0 && matched.length === 0) {
+              weightedScore *= 0.60;                                  // colour conflict → penalty
+              console.log(`[color-check] "${item.title}" colour CONFLICT (${conflicted.join(',')}) → ×0.60`);
+            }
           }
         }
 
@@ -571,11 +703,28 @@ class ImprovedImageAnalyzer {
       return features;
     }
 
-    const fingerprint = this._createDHash(smallData);
+    const fingerprint    = this._createDHash(smallData);
     const colorHistogram = this._createColorHistogram(smallData.data);
-    const pixelData = this._extractPixelSignature(smallData.data);
+    const pixelData      = this._extractPixelSignature(smallData.data);
 
-    const features = { fingerprint, colorHistogram, pixelData };
+    // Center-crop fingerprints: let a tight crop of the stored image match against
+    // a user search image that is a close-up crop of the same item.
+    // 75% crop = slight trim; 55% crop = aggressive trim focusing on center object.
+    const iw = img.naturalWidth  || img.width;
+    const ih = img.naturalHeight || img.height;
+    const _cropFP = (mx, my) => {
+      const cx = Math.floor(iw * mx), cy = Math.floor(ih * my);
+      const cw = Math.max(1, iw - cx * 2), ch = Math.max(1, ih - cy * 2);
+      compareCtx.drawImage(img, cx, cy, cw, ch, 0, 0, 64, 64);
+      try {
+        const d = compareCtx.getImageData(0, 0, 64, 64);
+        return this._createDHash(d);
+      } catch (_) { return null; }
+    };
+    const crop75Fingerprint = _cropFP(0.125, 0.125); // trim 12.5% each edge → 75% crop
+    const crop55Fingerprint = _cropFP(0.225, 0.225); // trim 22.5% each edge → 55% crop
+
+    const features = { fingerprint, crop75Fingerprint, crop55Fingerprint, colorHistogram, pixelData };
     this._imageFeatureCache.set(cacheKey, features);
     return features;
   }
@@ -876,8 +1025,29 @@ class ImprovedImageAnalyzer {
     return score * 0.5;
   }
   
+  /**
+   * Convert an RGB colour object to its hue (0–360°).
+   * Returns -1 for achromatic colours (black, white, gray) where hue is undefined.
+   * Accepts both {r,g,b} and {red,green,blue} formats.
+   * @private
+   */
+  _computeHue(rgb) {
+    const r = ((rgb.r !== undefined ? rgb.r : rgb.red)   || 0) / 255;
+    const g = ((rgb.g !== undefined ? rgb.g : rgb.green) || 0) / 255;
+    const b = ((rgb.b !== undefined ? rgb.b : rgb.blue)  || 0) / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    const delta = max - min;
+    if (delta < 0.12) return -1; // achromatic — no meaningful hue
+    let h;
+    if      (max === r) h = 60 * (((g - b) / delta) % 6);
+    else if (max === g) h = 60 * ((b - r) / delta + 2);
+    else                h = 60 * ((r - g) / delta + 4);
+    if (h < 0) h += 360;
+    return h;
+  }
+
   // PRIVATE METHODS
-  
+
   /**
    * Load image from various formats
    * @private
@@ -1531,8 +1701,8 @@ class ImprovedImageAnalyzer {
    * "Pen" label strongly promotes items whose title contains "pen".
    * @private
    */
-  _calculateLabelTitleScore(item, queryVisionLabels) {
-    if (!queryVisionLabels || queryVisionLabels.length === 0) return 0;
+  _calculateLabelTitleScore(item, queryVisionLabels, queryOcrTokens = []) {
+    if ((!queryVisionLabels || queryVisionLabels.length === 0) && queryOcrTokens.length === 0) return 0;
     const title = (item.title || '').toLowerCase();
     const description = (item.description || '').toLowerCase();
     let bestScore = 0;
@@ -1580,12 +1750,15 @@ class ImprovedImageAnalyzer {
         const synonyms = VISION_LABEL_SYNONYMS[text] || [];
         for (const syn of synonyms) {
           if (title.includes(syn) || syn.includes(title)) {
-            bestScore = Math.max(bestScore, weight * 0.80 * attrMult);
+            // Synonym hit on the exact title string — treat as near-exact match.
+            // Previously 0.80, which prevented the strong-formula threshold from
+            // ever being reached via synonym expansion.
+            bestScore = Math.max(bestScore, weight * 1.00 * attrMult);
             break;
           }
           for (const word of title.split(/\s+/)) {
             if (word.length > 2 && (syn.includes(word) || word.includes(syn))) {
-              bestScore = Math.max(bestScore, weight * 0.60 * attrMult);
+              bestScore = Math.max(bestScore, weight * 0.80 * attrMult);
               break;
             }
           }
@@ -1595,6 +1768,17 @@ class ImprovedImageAnalyzer {
       // Description match — lower weight since description text is looser
       if (description.includes(text) && bestScore < weight * 0.45 * attrMult) {
         bestScore = Math.max(bestScore, weight * 0.45 * attrMult);
+      }
+    }
+
+    // OCR tokens from user's search photo matched against item title / description.
+    // Covers cases like: user photographs a textbook and Vision reads "Calculus 9th Edition",
+    // which then matches an item titled "Calculus Textbook 9th Edition" in the database.
+    for (const { token, conf } of queryOcrTokens) {
+      if (title.includes(token)) {
+        bestScore = Math.max(bestScore, conf * 0.88);
+      } else if (description.includes(token)) {
+        bestScore = Math.max(bestScore, conf * 0.65);
       }
     }
 
@@ -1622,11 +1806,11 @@ class ImprovedImageAnalyzer {
    * @returns {number} 0–1
    * @private
    */
-  _calculateVisionLabelMatchScore(queryLabels, storedLabels, storedObjects = [], storedWebEntities = [], queryOcrTokens = [], storedVisionText = '') {
+  _calculateVisionLabelMatchScore(queryLabels, storedLabels, storedObjects = [], storedWebEntities = [], queryOcrTokens = [], storedVisionText = '', storedTextContext = '', queryWebEntities = []) {
     if (!queryLabels || queryLabels.length === 0) return 0;
     if (!storedLabels || storedLabels.length === 0) return 0;
 
-    const WEIGHTS = { ocr: 5, object: 3, webEntity: 3, label: 2 };
+    const WEIGHTS = { ocr: 5, object: 3, webEntity: 3, label: 2, crossWeb: 3 };
 
     const normalize = (arr, key = 'description') => {
       const map = new Map();
@@ -1646,6 +1830,17 @@ class ImprovedImageAnalyzer {
     const storedOcrSet = new Set(
       (storedVisionText || '').toLowerCase().split(/[\s\W]+/).filter(t => t.length > 2 && !this.backgroundLabels.has(t))
     );
+    // Tokenize item title + description for OCR cross-matching (slightly lower credit)
+    const storedTitleDescSet = new Set(
+      (storedTextContext || '').toLowerCase().split(/[\s\W]+/).filter(t => t.length > 2 && !this.backgroundLabels.has(t))
+    );
+
+    // Only include a track in totalMax when the stored item actually has data for it.
+    // Without this guard, items that only have visionLabels (no objects/webEntities) are
+    // systematically underscored: object+webEntity tracks add 6/8 to totalMax but 0 to
+    // totalScore, capping rawScore at 2/8 = 0.25 no matter how well the labels match.
+    const hasObjectData     = oMap.size > 0;
+    const hasWebEntityData  = eMap.size > 0;
 
     let totalScore = 0, totalMax = 0;
 
@@ -1653,25 +1848,63 @@ class ImprovedImageAnalyzer {
     for (const { token, conf } of queryOcrTokens) {
       const w = WEIGHTS.ocr * conf;
       totalMax += w;
-      if (storedOcrSet.has(token)) totalScore += w;
+      if (storedOcrSet.has(token)) {
+        totalScore += w;                    // OCR→OCR: exact cross-photo text match
+      } else if (storedTitleDescSet.has(token)) {
+        totalScore += w * 0.70;             // OCR→title/desc: high value but slightly penalised
+      }
     }
 
-    // ── Per-label: three parallel tracks ─────────────────────────
+    // ── Per-label: only include tracks that have stored data ──────
     for (const qLabel of queryLabels) {
       const text = qLabel.description.toLowerCase();
       const conf = qLabel.score || 0.5;
 
-      // Object track (weight 3) — highest-precision stored signal
-      totalMax   += WEIGHTS.object * conf;
-      totalScore += WEIGHTS.object * conf * this._hitScore(text, oMap);
-
-      // WebEntity track (weight 3) — brand / product-name signals
-      totalMax   += WEIGHTS.webEntity * conf;
-      totalScore += WEIGHTS.webEntity * conf * this._hitScore(text, eMap);
-
-      // Label track (weight 2) — general scene / category labels
+      if (hasObjectData) {
+        totalMax   += WEIGHTS.object * conf;
+        totalScore += WEIGHTS.object * conf * this._hitScore(text, oMap);
+      }
+      if (hasWebEntityData) {
+        totalMax   += WEIGHTS.webEntity * conf;
+        totalScore += WEIGHTS.webEntity * conf * this._hitScore(text, eMap);
+      }
+      // Label track is always present (we already confirmed storedLabels.length > 0)
       totalMax   += WEIGHTS.label * conf;
       totalScore += WEIGHTS.label * conf * this._hitScore(text, lMap);
+    }
+
+    // ── Cross-web-entity track: query web entities vs stored web entities (weight 3) ──
+    // Both sides are Cloud Vision web-detection results → same vocabulary.
+    // Crucially, colour words ("black", "red") are NOT filtered here so same-type
+    // items with different colours are correctly separated.
+    if (queryWebEntities.length > 0 && storedWebEntities.length > 0) {
+      // Build a colour-inclusive map of stored web entities
+      const eMapFull = new Map();
+      for (const it of storedWebEntities) {
+        const t = (it.description || '').toLowerCase().trim();
+        if (t) eMapFull.set(t, Math.max(eMapFull.get(t) || 0, it.score || 0));
+      }
+      // Use top-6 query web entities (sorted by score descending, highest relevance first)
+      const topQWE = queryWebEntities.slice().sort((a, b) => b.score - a.score).slice(0, 6);
+      for (const qEnt of topQWE) {
+        const text = qEnt.description;
+        const conf = qEnt.score;
+        const w    = WEIGHTS.crossWeb * conf;
+        totalMax  += w;
+        let hit = 0;
+        if (eMapFull.has(text)) {
+          hit = eMapFull.get(text);
+        } else {
+          for (const [key, val] of eMapFull) {
+            if (key.includes(text) || text.includes(key))
+              hit = Math.max(hit, val * 0.5);
+          }
+          for (const syn of (VISION_LABEL_SYNONYMS[text] || [])) {
+            if (eMapFull.has(syn)) hit = Math.max(hit, eMapFull.get(syn) * 0.7);
+          }
+        }
+        totalScore += w * hit;
+      }
     }
 
     if (totalMax === 0) return 0;
