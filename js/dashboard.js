@@ -213,8 +213,54 @@ function createItemCard(item) {
 
 // Open item details modal
 function openItemDetails(item) {
-    // Store context so Chat with Staff can pass item info to the chat widget
     window._currentItemForChat = { id: item.id, title: item.title };
+
+    // Build image list
+    const allImages = [];
+    if (item.image && !item.image.includes('placeholder.com')) allImages.push(item.image);
+    if (Array.isArray(item.additionalImages)) {
+        for (const src of item.additionalImages) if (src) allImages.push(src);
+    }
+    if (allImages.length === 0) allImages.push('https://via.placeholder.com/400x300?text=No+Image');
+
+    const mainImg  = document.getElementById('modalItemImage');
+    const thumbsEl = document.getElementById('galleryThumbs');
+    const prevBtn  = document.getElementById('galleryPrev');
+    const nextBtn  = document.getElementById('galleryNext');
+
+    let currentIdx = 0;
+
+    function showSlide(idx) {
+        currentIdx = (idx + allImages.length) % allImages.length;
+        mainImg.src = allImages[currentIdx];
+        thumbsEl.querySelectorAll('.gallery-thumb').forEach((t, i) =>
+            t.classList.toggle('active', i === currentIdx)
+        );
+    }
+
+    thumbsEl.innerHTML = '';
+    if (allImages.length > 1) {
+        allImages.forEach((src, i) => {
+            const t = document.createElement('div');
+            t.className = 'gallery-thumb' + (i === 0 ? ' active' : '');
+            const img = document.createElement('img');
+            img.src = src;
+            img.alt = 'Photo ' + (i + 1);
+            t.appendChild(img);
+            t.addEventListener('click', () => showSlide(i));
+            thumbsEl.appendChild(t);
+        });
+        prevBtn.classList.remove('hidden');
+        nextBtn.classList.remove('hidden');
+    } else {
+        prevBtn.classList.add('hidden');
+        nextBtn.classList.add('hidden');
+    }
+
+    prevBtn.onclick = () => showSlide(currentIdx - 1);
+    nextBtn.onclick = () => showSlide(currentIdx + 1);
+
+    showSlide(0);
 
     document.getElementById('modalItemTitle').textContent = item.title || 'Untitled Item';
     document.getElementById('modalItemDescription').textContent = item.description || 'No description available';
@@ -223,7 +269,6 @@ function openItemDetails(item) {
     document.getElementById('modalItemStorageLocation').textContent = item.storageLocation || 'Not specified';
     document.getElementById('modalItemFoundBy').textContent = item.foundBy || 'Unknown';
 
-    // Format date
     try {
         document.getElementById('modalItemDate').textContent = item.date
             ? new Date(item.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
@@ -232,7 +277,6 @@ function openItemDetails(item) {
         document.getElementById('modalItemDate').textContent = item.date || 'Unknown';
     }
 
-    // Set status badge
     const statusBadge = document.getElementById('modalItemStatus');
     const s = (item.status || 'active').toLowerCase();
     statusBadge.className = 'idm-status-badge ' + (
@@ -242,10 +286,6 @@ function openItemDetails(item) {
     );
     statusBadge.textContent = s.charAt(0).toUpperCase() + s.slice(1);
 
-    // Set image
-    document.getElementById('modalItemImage').src = item.image || 'https://via.placeholder.com/400x300?text=No+Image';
-
-    // Show the modal (clear any stale inline style so .modal.active CSS takes effect)
     const itemModal = document.getElementById('itemDetailsModal');
     itemModal.style.display = '';
     itemModal.classList.add('active');

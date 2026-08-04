@@ -173,7 +173,64 @@ document.addEventListener('DOMContentLoaded', () => {
 function openItemDetails(item) {
     if (!item) return;
 
-    document.getElementById('modalItemImage').src = item.image || 'https://via.placeholder.com/400x300?text=No+Image';
+    // Store for chat widget
+    window._currentItemForChat = { id: item.id, title: item.title };
+
+    // Build image list (primary + additional)
+    const allImages = [];
+    if (item.image && !item.image.includes('placeholder.com')) allImages.push(item.image);
+    if (Array.isArray(item.additionalImages)) {
+        for (const src of item.additionalImages) if (src) allImages.push(src);
+    }
+    if (allImages.length === 0) allImages.push('https://via.placeholder.com/400x300?text=No+Image');
+
+    const mainImg  = document.getElementById('modalItemImage');
+    const thumbsEl = document.getElementById('galleryThumbs');
+    const prevBtn  = document.getElementById('galleryPrev');
+    const nextBtn  = document.getElementById('galleryNext');
+
+    // Fallback: old HTML without gallery structure
+    if (!thumbsEl || !prevBtn || !nextBtn) {
+        if (mainImg) mainImg.src = allImages[0];
+        // Skip gallery setup gracefully
+    } else {
+        let currentIdx = 0;
+
+        function showSlide(idx) {
+            currentIdx = (idx + allImages.length) % allImages.length;
+            mainImg.src = allImages[currentIdx];
+            thumbsEl.querySelectorAll('.gallery-thumb').forEach((t, i) =>
+                t.classList.toggle('active', i === currentIdx)
+            );
+        }
+
+        // Build thumbnail strip (only shown when 2+ images)
+        thumbsEl.innerHTML = '';
+        if (allImages.length > 1) {
+            allImages.forEach((src, i) => {
+                const t = document.createElement('div');
+                t.className = 'gallery-thumb' + (i === 0 ? ' active' : '');
+                const img = document.createElement('img');
+                img.src = src;
+                img.alt = 'Photo ' + (i + 1);
+                t.appendChild(img);
+                t.addEventListener('click', () => showSlide(i));
+                thumbsEl.appendChild(t);
+            });
+            prevBtn.classList.remove('hidden');
+            nextBtn.classList.remove('hidden');
+        } else {
+            prevBtn.classList.add('hidden');
+            nextBtn.classList.add('hidden');
+        }
+
+        prevBtn.onclick = () => showSlide(currentIdx - 1);
+        nextBtn.onclick = () => showSlide(currentIdx + 1);
+
+        showSlide(0);
+    }
+
+    // Fill text fields
     document.getElementById('modalItemTitle').textContent = item.title || 'Untitled Item';
     document.getElementById('modalItemDescription').textContent = item.description || 'No description available.';
     document.getElementById('modalItemCategory').textContent = item.category || 'Not specified';

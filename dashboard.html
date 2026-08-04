@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lost & Found – Baguio City</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lucide@latest/font/lucide.css">
-    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/styles.css?v=2.0">
     <link rel="stylesheet" href="css/chat-auth.css">
     <link rel="stylesheet" href="css/chat-system.css">
     <!-- Emergency fix for chat auth modal -->
@@ -959,6 +959,71 @@
             color: #94a3b8;
             font-size: 0.82rem;
         }
+
+        /* ── How It Works Section ── */
+        .hiw-wrapper {
+            padding: 2rem 0.5rem;
+        }
+        .hiw-heading {
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: #1a2e6b;
+            margin: 0 0 0.4rem;
+        }
+        .hiw-subtitle {
+            color: #64748b;
+            font-size: 0.95rem;
+            margin: 0 0 2rem;
+        }
+        .hiw-cards {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+        }
+        .hiw-card {
+            background: #fff;
+            border-radius: 14px;
+            padding: 1.75rem 1.5rem;
+            box-shadow: 0 2px 14px rgba(26,46,107,0.09);
+            border-top: 4px solid #1a2e6b;
+            position: relative;
+        }
+        .hiw-step-num {
+            position: absolute;
+            top: -1px;
+            right: 1.25rem;
+            background: #f07316;
+            color: #fff;
+            width: 2rem;
+            height: 2rem;
+            border-radius: 0 0 8px 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 0.9rem;
+        }
+        .hiw-card-icon {
+            font-size: 2.2rem;
+            margin-bottom: 0.85rem;
+            line-height: 1;
+        }
+        .hiw-card h3 {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #1a2e6b;
+            margin: 0 0 0.6rem;
+        }
+        .hiw-card p {
+            font-size: 0.875rem;
+            color: #64748b;
+            line-height: 1.65;
+            margin: 0;
+        }
+        @media (max-width: 700px) {
+            .hiw-cards { grid-template-columns: 1fr; }
+            .hiw-heading { font-size: 1.3rem; }
+        }
     </style>
 </head>
 <body>
@@ -1302,6 +1367,44 @@
             transition: background 0.2s;
         }
         .plm-submit:hover { background: #dc2626; }
+        .plm-image-grid {
+            display: flex; flex-wrap: wrap; gap: 0.625rem;
+            padding: 0.75rem; background: #f8fafc;
+            border: 2px dashed #cbd5e1; border-radius: 0.5rem;
+            min-height: 114px; align-items: flex-start;
+        }
+        .plm-img-thumb {
+            position: relative; width: 90px; height: 90px;
+            border-radius: 6px; overflow: hidden;
+            border: 2px solid #e2e8f0; flex-shrink: 0;
+        }
+        .plm-img-thumb img { width:100%; height:100%; object-fit:cover; display:block; }
+        .plm-thumb-remove {
+            position: absolute; top: 3px; right: 3px;
+            width: 20px; height: 20px; border-radius: 50%;
+            background: rgba(0,0,0,0.65); color: white;
+            border: none; cursor: pointer; font-size: 11px;
+            display: flex; align-items: center; justify-content: center;
+            padding: 0; line-height: 1;
+        }
+        .plm-thumb-remove:hover { background: rgba(220,38,38,0.85); }
+        .plm-thumb-primary {
+            position: absolute; bottom: 0; left: 0; right: 0;
+            background: rgba(26,46,107,0.80); color: white;
+            font-size: 9px; text-align: center; padding: 2px 0;
+            letter-spacing: 0.05em; text-transform: uppercase;
+        }
+        .plm-add-slot {
+            width: 90px; height: 90px; border-radius: 6px;
+            border: 2px dashed #cbd5e1;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            cursor: pointer; color: #94a3b8;
+            font-size: 0.7rem; gap: 3px; transition: all 0.2s;
+            background: white; flex-shrink: 0; user-select: none;
+        }
+        .plm-add-slot:hover { border-color: #f07316; color: #f07316; background: #fff7ed; }
+        .plm-add-slot-icon { font-size: 1.4rem; line-height: 1; }
         .plm-submit:disabled { background: #fca5a5; cursor: not-allowed; }
 
         /* ── Lost Item Detail Modal ── */
@@ -1399,6 +1502,10 @@
                     <span class="usb-notif-badge" id="usbInboxBadge" style="display:none">0</span>
                 </span>
             </li>
+            <li class="usb-item" id="usbNavHowItWorks">
+                <span class="usb-icon">❓</span>
+                <span>How It Works</span>
+            </li>
             <li class="usb-item" id="usbNavLogin">
                 <span class="usb-icon">🔑</span>
                 <span>Login / Register</span>
@@ -1461,6 +1568,34 @@
             </div>
         </section>
 
+        <!-- ── How It Works Section ── -->
+        <section id="howItWorksSection" style="display:none">
+            <div class="hiw-wrapper">
+                <h2 class="hiw-heading">How It Works</h2>
+                <p class="hiw-subtitle">Follow these simple steps to find your lost item or report one</p>
+                <div class="hiw-cards">
+                    <div class="hiw-card">
+                        <div class="hiw-step-num">1</div>
+                        <div class="hiw-card-icon">🔍</div>
+                        <h3>Looking for your Item</h3>
+                        <p>Browse our found items list and use the <strong>search bar</strong> to look up your item by name or description. You can also use the <strong>Search by Image</strong> feature to find a match visually. Use the category filter to narrow down results quickly.</p>
+                    </div>
+                    <div class="hiw-card">
+                        <div class="hiw-step-num">2</div>
+                        <div class="hiw-card-icon">📋</div>
+                        <h3>Reporting your Lost Item</h3>
+                        <p>Can't find your item in the list? Submit a lost item report with a description and photo. Our staff will notify you as soon as a matching item is turned in.</p>
+                    </div>
+                    <div class="hiw-card">
+                        <div class="hiw-step-num">3</div>
+                        <div class="hiw-card-icon">💬</div>
+                        <h3>Chat with Staff</h3>
+                        <p>Found a potential match? Click on the item card that matches your item and use the "Chat with Staff" button to arrange pickup or verification. If your item is not yet on the list, use the <strong>Chat with Staff</strong> button below to talk to an admin directly.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <section class="items-section">
             <div class="items-header">
                 <div class="title-with-refresh">
@@ -1479,8 +1614,13 @@
         <div class="modal-content large">
             <span class="close">&times;</span>
             <div class="modal-body">
-                <div class="modal-image">
-                    <img id="modalItemImage" src="" alt="Item">
+                <div class="modal-image" id="modalImageArea">
+                    <div class="gallery-main">
+                        <img id="modalItemImage" src="" alt="Item">
+                        <button type="button" class="gallery-arrow gallery-prev hidden" id="galleryPrev">&#8249;</button>
+                        <button type="button" class="gallery-arrow gallery-next hidden" id="galleryNext">&#8250;</button>
+                    </div>
+                    <div class="gallery-thumbs" id="galleryThumbs"></div>
                 </div>
                 <div class="modal-content-right">
                     <div class="idm-header">
@@ -1554,19 +1694,9 @@
             <h2 class="plm-title">🔍 Report a Lost Item</h2>
             <form id="postLostForm" novalidate>
                 <div class="plm-group">
-                    <label>Item Photo</label>
-                    <div class="plm-img-drop" id="plmImgDrop">
-                        <div class="plm-img-drop-text">
-                            <div>📤</div>
-                            <div>Click to upload or drag and drop</div>
-                            <div style="font-size:0.75rem;color:#94a3b8;margin-top:4px;">PNG, JPG, JPEG (max 5MB)</div>
-                        </div>
-                    </div>
+                    <label>Item Photos <span style="color:#94a3b8;font-weight:400;font-size:0.78rem;">— up to 4, first is used for search</span></label>
+                    <div id="plmImageGrid" class="plm-image-grid"></div>
                     <input type="file" id="plmImageFile" accept="image/*" style="display:none">
-                    <div style="display:flex;gap:0.5rem;margin-top:0.5rem;">
-                        <button type="button" id="plmUploadBtn" style="background:white;border:1px solid #cbd5e1;padding:0.35rem 0.9rem;border-radius:0.375rem;cursor:pointer;font-size:0.85rem;">Upload Image</button>
-                        <button type="button" id="plmRemoveBtn" style="display:none;background:white;border:1px solid #fca5a5;color:#ef4444;padding:0.35rem 0.9rem;border-radius:0.375rem;cursor:pointer;font-size:0.85rem;">Remove</button>
-                    </div>
                 </div>
 
                 <div class="plm-form-row">
@@ -1930,6 +2060,14 @@
         function _renderFoundItemModal(item) {
                 const itemId = item.id;
 
+                // Gather all images
+                const _allImgs = [];
+                if (item.image && !item.image.includes('placeholder.com')) _allImgs.push(item.image);
+                if (Array.isArray(item.additionalImages)) {
+                    for (const s of item.additionalImages) if (s) _allImgs.push(s);
+                }
+                if (_allImgs.length === 0) _allImgs.push('https://via.placeholder.com/400x300?text=No+Image');
+
                 // Format date
                 let dateStr = 'Unknown';
                 if (item.date) {
@@ -1943,6 +2081,31 @@
                 const statusText  = item.status === 'claimed' ? 'Claimed'
                                   : item.status === 'soon'    ? 'Disposal Soon'
                                   : 'Active';
+
+                // Build image column HTML
+                const _thumbsHtml = _allImgs.length > 1 ? `
+                    <div id="fimThumbs" style="display:flex;gap:5px;padding:8px;background:rgba(0,0,0,.12);overflow-x:auto;">
+                        ${_allImgs.map((src, i) => `
+                        <img data-idx="${i}" src="${src}" alt="Photo ${i+1}" style="
+                            width:52px;height:52px;object-fit:cover;border-radius:4px;cursor:pointer;flex-shrink:0;
+                            border:2px solid ${i===0?'#f07316':'transparent'};opacity:${i===0?'1':'.6'};
+                            transition:opacity .15s,border-color .15s;">`).join('')}
+                    </div>` : '';
+                const _arrowStyle = `position:absolute;top:50%;transform:translateY(-50%);
+                    background:rgba(0,0,0,.50);color:#fff;border:none;border-radius:50%;
+                    width:34px;height:34px;font-size:22px;cursor:pointer;
+                    display:${_allImgs.length > 1 ? 'flex' : 'none'};
+                    align-items:center;justify-content:center;padding:0;z-index:2;`;
+                const _imgColHtml = `
+                    <div style="position:relative;width:100%;">
+                        <img id="fimMainImg" src="${_allImgs[0]}"
+                             alt="${item.title || 'Item'}"
+                             style="width:100%;max-height:400px;object-fit:contain;border-radius:6px;display:block;"
+                             onerror="this.src='https://via.placeholder.com/400x300?text=No+Image'">
+                        <button id="fimPrev" style="${_arrowStyle}left:8px;">&#8249;</button>
+                        <button id="fimNext" style="${_arrowStyle}right:8px;">&#8250;</button>
+                    </div>
+                    ${_thumbsHtml}`;
 
                 const overlay = document.createElement('div');
                 overlay.id = 'foundItemModal';
@@ -1971,11 +2134,8 @@
                       <!-- Image column -->
                       <div style="
                           flex:0 0 45%;min-width:320px;background:#f8fafc;
-                          display:flex;align-items:center;justify-content:center;padding:1.75rem;">
-                        <img src="${item.image || 'https://via.placeholder.com/400x300?text=No+Image'}"
-                             alt="${item.title || 'Item'}"
-                             style="max-width:100%;max-height:480px;object-fit:contain;border-radius:6px;"
-                             onerror="this.src='https://via.placeholder.com/400x300?text=No+Image'">
+                          display:flex;flex-direction:column;justify-content:center;padding:1.75rem;">
+                        ${_imgColHtml}
                       </div>
 
                       <!-- Details column -->
@@ -2045,6 +2205,24 @@
                 }
 
                 document.body.appendChild(overlay);
+
+                // Gallery navigation
+                if (_allImgs.length > 1) {
+                    let _curIdx = 0;
+                    const _mainImg = document.getElementById('fimMainImg');
+                    const _thumbEls = document.querySelectorAll('#fimThumbs img');
+                    const _goTo = (idx) => {
+                        _curIdx = (idx + _allImgs.length) % _allImgs.length;
+                        _mainImg.src = _allImgs[_curIdx];
+                        _thumbEls.forEach((t, i) => {
+                            t.style.borderColor = i === _curIdx ? '#f07316' : 'transparent';
+                            t.style.opacity = i === _curIdx ? '1' : '.6';
+                        });
+                    };
+                    document.getElementById('fimPrev').onclick = () => _goTo(_curIdx - 1);
+                    document.getElementById('fimNext').onclick = () => _goTo(_curIdx + 1);
+                    _thumbEls.forEach((t, i) => t.addEventListener('click', () => _goTo(i)));
+                }
 
                 const close = () => overlay.remove();
                 overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
@@ -2125,7 +2303,7 @@
 
         // ── State ──
         let _lostUnsub = null;
-        let _plmImage  = null; // base64 data URL of selected image
+        let _plmImages = [];  // [{dataUrl}] — max 4, index 0 is primary
 
         // ── DOM refs (resolved after DOMContentLoaded) ──
         const $ = id => document.getElementById(id);
@@ -2206,25 +2384,44 @@
         function _closePostModal() {
             $('postLostModal').style.display = 'none';
             $('postLostForm').reset();
-            _plmImage = null;
-            const drop = $('plmImgDrop');
-            drop.innerHTML = `<div class="plm-img-drop-text"><div>📤</div><div>Click to upload or drag and drop</div><div style="font-size:0.75rem;color:#94a3b8;margin-top:4px;">PNG, JPG, JPEG (max 5MB)</div></div>`;
-            $('plmRemoveBtn').style.display = 'none';
+            _plmImages = [];
             $('plmError').style.display = 'none';
+            _renderPlmGrid();
         }
 
-        function _setPlmImage(file) {
-            if (!file || !file.type.startsWith('image/')) return;
-            if (file.size > 5 * 1024 * 1024) { alert('Image must be under 5MB.'); return; }
-            const reader = new FileReader();
-            reader.onload = async ev => {
-                const resized = await _resizeImg(ev.target.result, 900, 0.8);
-                _plmImage = resized;
-                const drop = $('plmImgDrop');
-                drop.innerHTML = `<img src="${resized}" alt="preview" style="max-width:100%;max-height:138px;object-fit:contain;">`;
-                $('plmRemoveBtn').style.display = 'inline-block';
-            };
-            reader.readAsDataURL(file);
+        function _renderPlmGrid() {
+            const grid = $('plmImageGrid');
+            if (!grid) return;
+            grid.innerHTML = '';
+            _plmImages.forEach((img, idx) => {
+                const thumb = document.createElement('div');
+                thumb.className = 'plm-img-thumb';
+                const imgEl = document.createElement('img');
+                imgEl.src = img.dataUrl; imgEl.alt = 'Photo ' + (idx + 1);
+                thumb.appendChild(imgEl);
+                const removeBtn = document.createElement('button');
+                removeBtn.type = 'button'; removeBtn.className = 'plm-thumb-remove';
+                removeBtn.textContent = '✕';
+                removeBtn.addEventListener('click', e => {
+                    e.stopPropagation();
+                    _plmImages.splice(idx, 1);
+                    _renderPlmGrid();
+                });
+                thumb.appendChild(removeBtn);
+                if (idx === 0) {
+                    const badge = document.createElement('div');
+                    badge.className = 'plm-thumb-primary'; badge.textContent = 'Primary';
+                    thumb.appendChild(badge);
+                }
+                grid.appendChild(thumb);
+            });
+            if (_plmImages.length < 4) {
+                const slot = document.createElement('div');
+                slot.className = 'plm-add-slot';
+                slot.innerHTML = '<span class="plm-add-slot-icon">📷</span><span>Add Photo</span>';
+                slot.addEventListener('click', () => $('plmImageFile') && $('plmImageFile').click());
+                grid.appendChild(slot);
+            }
         }
 
         async function _submitLostItem(e) {
@@ -2266,7 +2463,8 @@
                     lastLocation: location,
                     dateLost: date,
                     contactNumber: contact,
-                    image: _plmImage || '',
+                    image: _plmImages[0] ? _plmImages[0].dataUrl : '',
+                    additionalImages: _plmImages.slice(1).map(i => i.dataUrl),
                     userId: user.uid,
                     userName: userDoc.name || user.displayName || '',
                     userEmail: user.email || '',
@@ -2299,28 +2497,26 @@
             const postOverlay = $('postLostModal');
             if (postOverlay) postOverlay.addEventListener('click', e => { if (e.target === postOverlay) _closePostModal(); });
 
-            // Image upload
-            const uploadBtn = $('plmUploadBtn');
+            // Image upload — single file input shared by all slots
             const fileInput = $('plmImageFile');
-            const imgDrop   = $('plmImgDrop');
-            const removeBtn = $('plmRemoveBtn');
-            if (uploadBtn) uploadBtn.addEventListener('click', () => fileInput && fileInput.click());
-            if (imgDrop)   imgDrop.addEventListener('click', () => fileInput && fileInput.click());
-            if (fileInput) fileInput.addEventListener('change', e => _setPlmImage(e.target.files[0]));
-            if (imgDrop) {
-                imgDrop.addEventListener('dragover', e => { e.preventDefault(); imgDrop.style.borderColor = '#fed7aa'; });
-                imgDrop.addEventListener('dragleave', () => { imgDrop.style.borderColor = ''; });
-                imgDrop.addEventListener('drop', e => {
-                    e.preventDefault(); imgDrop.style.borderColor = '';
-                    _setPlmImage(e.dataTransfer.files[0]);
+            if (fileInput) {
+                fileInput.addEventListener('change', async function() {
+                    if (!this.files || !this.files[0]) return;
+                    if (_plmImages.length >= 4) { this.value = ''; return; }
+                    const file = this.files[0];
+                    this.value = '';
+                    if (!file.type.startsWith('image/')) return;
+                    if (file.size > 5 * 1024 * 1024) { alert('Image must be under 5MB.'); return; }
+                    const reader = new FileReader();
+                    reader.onload = async ev => {
+                        const dataUrl = await _resizeImg(ev.target.result, 900, 0.8);
+                        _plmImages.push({ dataUrl });
+                        _renderPlmGrid();
+                    };
+                    reader.readAsDataURL(file);
                 });
             }
-            if (removeBtn) removeBtn.addEventListener('click', () => {
-                _plmImage = null;
-                imgDrop.innerHTML = `<div class="plm-img-drop-text"><div>📤</div><div>Click to upload or drag and drop</div><div style="font-size:0.75rem;color:#94a3b8;margin-top:4px;">PNG, JPG, JPEG (max 5MB)</div></div>`;
-                removeBtn.style.display = 'none';
-                if (fileInput) fileInput.value = '';
-            });
+            _renderPlmGrid();
 
             // Post form submit
             const postForm = $('postLostForm');
@@ -2367,19 +2563,28 @@
             const foundSec  = document.getElementById('lostItemsSection');   // Lost Items section
             const lostSec   = document.querySelector('.items-section');        // Found Items section
             const filters   = document.querySelector('.filters');
+            const howSec    = document.getElementById('howItWorksSection');
 
             // Update nav active state
             document.getElementById('usbNavFound').classList.toggle('active', which === 'found');
             document.getElementById('usbNavLost').classList.toggle('active', which === 'lost');
+            document.getElementById('usbNavHowItWorks').classList.toggle('active', which === 'howitworks');
 
             if (which === 'found') {
                 if (lostSec)  lostSec.style.display  = '';
                 if (filters)  filters.style.display   = '';
                 if (foundSec) foundSec.style.display  = 'none';
+                if (howSec)   howSec.style.display    = 'none';
+            } else if (which === 'howitworks') {
+                if (lostSec)  lostSec.style.display   = 'none';
+                if (filters)  filters.style.display   = 'none';
+                if (foundSec) foundSec.style.display  = 'none';
+                if (howSec)   howSec.style.display    = '';
             } else {
                 if (lostSec)  lostSec.style.display   = 'none';
                 if (filters)  filters.style.display   = 'none';
                 if (foundSec) foundSec.style.display  = '';
+                if (howSec)   howSec.style.display    = 'none';
             }
         }
 
@@ -2513,9 +2718,11 @@
                 _closeMobileSidebar();
             });
 
-            // Initially hide lost section (found is default)
+            // Initially hide non-default sections (found is default)
             const lostSec = document.getElementById('lostItemsSection');
             if (lostSec) lostSec.style.display = 'none';
+            const howSec = document.getElementById('howItWorksSection');
+            if (howSec) howSec.style.display = 'none';
 
             // Found Items nav
             document.getElementById('usbNavFound').addEventListener('click', () => { _showSection('found'); _closeMobileSidebar(); });
@@ -2523,6 +2730,8 @@
             // Lost Items nav
             document.getElementById('usbNavLost').addEventListener('click', () => { _showSection('lost'); _closeMobileSidebar(); });
 
+            // How It Works nav
+            document.getElementById('usbNavHowItWorks').addEventListener('click', () => { _showSection('howitworks'); _closeMobileSidebar(); });
 
             // Inbox nav — open centered modal
             const _backdrop = document.getElementById('inboxCenterBackdrop');
@@ -2605,19 +2814,19 @@
     </script>
 
     <!-- Data and UI scripts -->
-    <script src="js/firebase-data.js"></script>
+    <script src="js/firebase-data.js?v=2.0"></script>
     <script src="js/dashboard.js?v=3.0"></script>
     <script src="js/debug-dashboard.js"></script>
-    <script src="js/modal.js"></script>
+    <script src="js/modal.js?v=2.0"></script>
     
     <!-- Live chat widget (used by Chat with Staff button in item modals) -->
     <script src="js/user-live-chat.js?v=2.4"></script>
     <script src="js/chat-input-fix.js"></script>
 
     <!-- Improved image analysis and search -->
-    <script src="js/improvedImageAnalyzer.js?v=9.1"></script>
-    <script src="js/cloudVision.js?v=4.0"></script>
-    <script src="js/accurateImageSearch.js?v=5.0"></script>
+    <script src="js/improvedImageAnalyzer.js?v=9.5"></script>
+    <script src="js/cloudVision.js?v=4.1"></script>
+    <script src="js/accurateImageSearch.js?v=5.1"></script>
 
 
     <div id="inboxCenterBackdrop"></div>

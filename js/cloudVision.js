@@ -123,6 +123,87 @@ class CloudVisionHelper {
     }
 
     /**
+     * Run Vision on multiple images (primary + additional), merge all results into a
+     * richer label/entity/color set, and write it to the item's Firestore document.
+     * Additional images beyond the primary each contribute new labels and web entities
+     * that improve semantic matching accuracy during search.
+     * @param {string} itemId
+     * @param {Array<File|Blob|string>} imageDataArray - primary first, then additional
+     */
+    async enrichItemMultipleImages(itemId, imageDataArray) {
+        if (!this.available) return;
+        if (!imageDataArray || imageDataArray.length === 0) return;
+
+        try {
+            // Analyze all images concurrently (Vision API rate limits are generous)
+            const analysisPromises = imageDataArray.map(img =>
+                this.analyzeImage(img).catch(e => {
+                    console.warn('Vision analysis failed for one image:', e.message);
+                    return null;
+                })
+            );
+            const results = (await Promise.all(analysisPromises)).filter(Boolean);
+            if (results.length === 0) return;
+
+            // Merge labels: keep highest score per unique description
+            const labelMap   = new Map();
+            const objectMap  = new Map();
+            const entityMap  = new Map();
+            const allColors  = [];
+            let   bestText   = '';
+
+            for (const r of results) {
+                for (const l of (r.labelAnnotations || []))
+                    labelMap.set(l.description, Math.max(labelMap.get(l.description) || 0, l.score || 0));
+
+                for (const o of (r.localizedObjectAnnotations || []))
+                    objectMap.set(o.name, Math.max(objectMap.get(o.name) || 0, o.score || 0));
+
+                for (const e of ((r.webDetection && r.webDetection.webEntities) || []))
+                    entityMap.set(e.description, Math.max(entityMap.get(e.description) || 0, e.score || 0));
+
+                const cols = (r.imagePropertiesAnnotation &&
+                              r.imagePropertiesAnnotation.dominantColors &&
+                              r.imagePropertiesAnnotation.dominantColors.colors) || [];
+                allColors.push(...cols);
+
+                const txt = (r.textAnnotations && r.textAnnotations[0] && r.textAnnotations[0].description) || '';
+                if (txt.length > bestText.length) bestText = txt;
+            }
+
+            const sortByScore = (map, limit) =>
+                [...map.entries()]
+                    .filter(([k]) => k)
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, limit)
+                    .map(([description, score]) => ({ description, score }));
+
+            const visionData = {
+                visionLabels:      sortByScore(labelMap, 20),
+                visionObjects:     [...objectMap.entries()].filter(([k])=>k).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([name,score])=>({name,score})),
+                visionWebEntities: sortByScore(entityMap, 15),
+                visionColors: allColors
+                    .sort((a, b) => (b.score || 0) - (a.score || 0))
+                    .slice(0, 6)
+                    .map(c => ({
+                        red:  (c.color && c.color.red)   || 0,
+                        green:(c.color && c.color.green) || 0,
+                        blue: (c.color && c.color.blue)  || 0,
+                        score: c.score || 0,
+                        pixelFraction: c.pixelFraction || 0
+                    })),
+                visionText: bestText,
+                visionAnalyzedAt: firebase.firestore.FieldValue.serverTimestamp()
+            };
+
+            await firebase.firestore().collection('items').doc(itemId).update(visionData);
+            console.log(`Multi-image Vision enrichment complete for ${itemId}: ${visionData.visionLabels.length} labels from ${results.length} images`);
+        } catch (err) {
+            console.warn(`Multi-image Vision enrichment failed for ${itemId}:`, err.message);
+        }
+    }
+
+    /**
      * Convert any supported image format to a raw base64 string (no data: prefix).
      * Compresses Blobs/Files to ≤1200px and JPEG quality 0.85 before encoding
      * so the payload stays well under the Vision API's ~10 MB limit.

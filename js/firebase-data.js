@@ -70,6 +70,7 @@
                         date: data.date || new Date().toISOString(),
                         status: data.status || 'active',
                         image: data.image || 'https://via.placeholder.com/400x300?text=No+Image',
+                        additionalImages: data.additionalImages || [],
                         disposalDate: data.disposalDate || '',
                         storageLocation: data.storageLocation || '',
                         foundBy: data.foundBy || ''
@@ -104,6 +105,7 @@
                     date: data.date || new Date().toISOString(),
                     status: data.status || 'active',
                     image: data.image || 'https://via.placeholder.com/400x300?text=No+Image',
+                    additionalImages: data.additionalImages || [],
                     disposalDate: data.disposalDate || '',
                     storageLocation: data.storageLocation || '',
                     foundBy: data.foundBy || ''

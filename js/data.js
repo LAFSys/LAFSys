@@ -75,8 +75,11 @@ async function getItemById(id) {
             date: processTimestamp(data.date),
             status: data.status || 'active',
             image: data.image || 'https://via.placeholder.com/300x200?text=No+Image',
+            additionalImages: data.additionalImages || [],
             disposalDate: data.disposalDate ? processTimestamp(data.disposalDate) : null,
             category: data.category || 'Uncategorized',
+            storageLocation: data.storageLocation || '',
+            foundBy: data.foundBy || '',
             createdAt: data.createdAt ? processTimestamp(data.createdAt) : new Date()
         };
     } catch (error) {

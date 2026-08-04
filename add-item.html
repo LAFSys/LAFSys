@@ -125,53 +125,91 @@
             resize: vertical;
         }
         
-        /* Image Upload */
-        .image-upload-preview {
-            width: 100%;
-            height: 200px;
+        /* Multi-photo upload grid */
+        .photos-label-hint {
+            font-size: 0.78rem;
+            color: #94a3b8;
+            font-weight: 400;
+        }
+        .image-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.625rem;
+            padding: 0.75rem;
+            background: #f8fafc;
             border: 2px dashed #cbd5e1;
             border-radius: 0.5rem;
+            min-height: 114px;
+            align-items: flex-start;
+        }
+        .image-thumb {
+            position: relative;
+            width: 90px;
+            height: 90px;
+            border-radius: 6px;
+            overflow: hidden;
+            border: 2px solid #e2e8f0;
+            flex-shrink: 0;
+        }
+        .image-thumb img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        .image-thumb .thumb-remove {
+            position: absolute;
+            top: 3px;
+            right: 3px;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: rgba(0,0,0,0.65);
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-size: 11px;
             display: flex;
             align-items: center;
             justify-content: center;
-            flex-direction: column;
-            cursor: pointer;
-            transition: all 0.2s;
-            overflow: hidden;
-            position: relative;
-            background-color: #f8fafc;
+            padding: 0;
+            line-height: 1;
         }
-        
-        .image-upload-preview:hover {
-            border-color: #fed7aa;
-            background-color: #fff7ed;
-        }
-        
-        .image-upload-preview.has-image {
-            border: none;
-        }
-        
-        .image-upload-preview img {
-            max-width: 100%;
-            max-height: 100%;
-            object-fit: contain;
-        }
-        
-        .image-upload-text {
+        .image-thumb .thumb-remove:hover { background: rgba(220,38,38,0.85); }
+        .image-thumb .thumb-primary {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(26,46,107,0.80);
+            color: white;
+            font-size: 9px;
             text-align: center;
-            padding: 1rem;
-            color: #64748b;
+            padding: 2px 0;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
         }
-        
-        .image-upload-input {
-            display: none;
-        }
-        
-        .image-upload-actions {
+        .image-add-slot {
+            width: 90px;
+            height: 90px;
+            border-radius: 6px;
+            border: 2px dashed #cbd5e1;
             display: flex;
-            gap: 0.5rem;
-            margin-top: 0.75rem;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: #94a3b8;
+            font-size: 0.7rem;
+            gap: 3px;
+            transition: all 0.2s;
+            background: white;
+            flex-shrink: 0;
+            user-select: none;
         }
+        .image-add-slot:hover { border-color: #f07316; color: #f07316; background: #fff7ed; }
+        .image-add-slot .add-icon { font-size: 1.4rem; line-height: 1; }
+        .image-upload-input { display: none; }
         
         /* Buttons */
         .btn {
@@ -256,25 +294,9 @@
                 <h2 class="section-title">Item Information</h2>
                 
                 <div class="form-group">
-                    <label>Item Photo</label>
-                    <div class="image-upload-preview" id="imagePreview">
-                        <div class="image-upload-text">
-                            <span>📤</span>
-                            <div>Click to upload or drag and drop</div>
-                            <div style="font-size: 0.75rem; margin-top: 0.5rem; color: #94a3b8;">
-                                PNG, JPG, JPEG (max. 5MB)
-                            </div>
-                        </div>
-                    </div>
+                    <label>Item Photos <span class="photos-label-hint">— up to 5, first is used for search</span></label>
+                    <div id="imageGrid" class="image-grid"></div>
                     <input type="file" id="imageUpload" class="image-upload-input" accept="image/*">
-                    <div class="image-upload-actions">
-                        <button type="button" class="btn btn-secondary btn-sm" id="uploadBtn">
-                            Upload Image
-                        </button>
-                        <button type="button" class="btn btn-secondary btn-sm" id="removeImageBtn" style="display: none;">
-                            Remove
-                        </button>
-                    </div>
                 </div>
                 
                 <div class="form-row">
@@ -351,7 +373,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
     <script src="js/firebase-debug.js"></script>
     <script src="js/image-compressor.js"></script>
-    <script src="js/cloudVision.js"></script>
+    <script src="js/cloudVision.js?v=4.1"></script>
     
     <!-- Firebase Config -->
     <script>
@@ -404,7 +426,9 @@
         const urlParams = new URLSearchParams(window.location.search);
         const isEditMode = urlParams.get('edit') === 'true';
         const itemId = urlParams.get('id');
-        let originalImageUrl = ''; // Store original image URL for edit mode
+        let originalImageUrl = '';
+        let uploadedImages = []; // { file: File|null, dataUrl: string }[]
+        const MAX_PHOTOS = 5;
         
         // Function to load item data for editing
         async function loadItemForEdit(id) {
@@ -461,15 +485,19 @@
                     document.getElementById('disposalDate').value = disposalValue;
                 }
                 
-                // Load image if exists and store the original URL
-                if (item.image && item.image !== 'https://via.placeholder.com/400x300?text=No+Image') {
-                    originalImageUrl = item.image; // Store original image URL
-                    const imagePreview = document.getElementById('imagePreview');
-                    imagePreview.innerHTML = `<img src="${item.image}" style="max-width: 100%; max-height: 100%;">`;
-                    imagePreview.classList.add('has-image');
-                    document.getElementById('removeImageBtn').style.display = 'inline-flex';
+                // Load images into uploadedImages (renderImageGrid is called after this returns)
+                uploadedImages = [];
+                if (item.image && !item.image.includes('placeholder.com')) {
+                    originalImageUrl = item.image;
+                    uploadedImages.push({ file: null, dataUrl: item.image });
+                    if (Array.isArray(item.additionalImages)) {
+                        for (const url of item.additionalImages) {
+                            if (url && uploadedImages.length < MAX_PHOTOS)
+                                uploadedImages.push({ file: null, dataUrl: url });
+                        }
+                    }
                 } else {
-                    originalImageUrl = 'https://via.placeholder.com/400x300?text=No+Image';
+                    originalImageUrl = '';
                 }
                 
                 // Update submit button text
@@ -499,73 +527,73 @@
             });
             
             const imageUpload = document.getElementById('imageUpload');
-            const imagePreview = document.getElementById('imagePreview');
-            const uploadBtn = document.getElementById('uploadBtn');
-            const removeImageBtn = document.getElementById('removeImageBtn');
-            
-            // If in edit mode, load the item data
+            const imageGrid   = document.getElementById('imageGrid');
+
+            function renderImageGrid() {
+                imageGrid.innerHTML = '';
+
+                uploadedImages.forEach((img, idx) => {
+                    const thumb = document.createElement('div');
+                    thumb.className = 'image-thumb';
+
+                    const imgEl = document.createElement('img');
+                    imgEl.src = img.dataUrl;
+                    imgEl.alt = 'Photo ' + (idx + 1);
+                    thumb.appendChild(imgEl);
+
+                    const removeBtn = document.createElement('button');
+                    removeBtn.type = 'button';
+                    removeBtn.className = 'thumb-remove';
+                    removeBtn.title = 'Remove photo';
+                    removeBtn.textContent = '✕';
+                    removeBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        uploadedImages.splice(idx, 1);
+                        renderImageGrid();
+                    });
+                    thumb.appendChild(removeBtn);
+
+                    if (idx === 0) {
+                        const badge = document.createElement('div');
+                        badge.className = 'thumb-primary';
+                        badge.textContent = 'Primary';
+                        thumb.appendChild(badge);
+                    }
+
+                    imageGrid.appendChild(thumb);
+                });
+
+                if (uploadedImages.length < MAX_PHOTOS) {
+                    const slot = document.createElement('div');
+                    slot.className = 'image-add-slot';
+                    slot.innerHTML = '<span class="add-icon">📷</span><span>Add Photo</span>';
+                    slot.addEventListener('click', () => imageUpload.click());
+                    imageGrid.appendChild(slot);
+                }
+            }
+
+            // Initial render
+            renderImageGrid();
+
+            // If in edit mode, load item then re-render with existing images
             if (isEditMode && itemId) {
                 await loadItemForEdit(itemId);
+                renderImageGrid();
             }
-            
-            // Trigger file input when clicking on preview area
-            imagePreview.addEventListener('click', function() {
-                imageUpload.click();
-            });
-            
-            // Trigger file input when clicking on upload button
-            uploadBtn.addEventListener('click', function() {
-                imageUpload.click();
-            });
-            
-            // Handle file selection
-            imageUpload.addEventListener('change', function() {
-                if (this.files && this.files[0]) {
+
+            // File picker handler
+            imageUpload.addEventListener('change', async function() {
+                if (!this.files || !this.files[0]) return;
+                if (uploadedImages.length >= MAX_PHOTOS) { this.value = ''; return; }
+                const file = this.files[0];
+                this.value = ''; // allow selecting the same file again
+                const dataUrl = await new Promise(resolve => {
                     const reader = new FileReader();
-                    
-                    reader.onload = function(e) {
-                        // Clear existing content
-                        imagePreview.innerHTML = '';
-                        
-                        // Create image element
-                        const img = document.createElement('img');
-                        img.src = e.target.result;
-                        img.style.maxWidth = '100%';
-                        img.style.maxHeight = '100%';
-                        
-                        // Add image to preview
-                        imagePreview.appendChild(img);
-                        imagePreview.classList.add('has-image');
-                        
-                        // Show remove button
-                        removeImageBtn.style.display = 'inline-flex';
-                    };
-                    
-                    reader.readAsDataURL(this.files[0]);
-                }
-            });
-            
-            // Handle image removal
-            removeImageBtn.addEventListener('click', function(e) {
-                e.stopPropagation(); // Prevent triggering file input
-                
-                // Clear file input
-                imageUpload.value = '';
-                
-                // Reset preview
-                imagePreview.innerHTML = `
-                    <div class="image-upload-text">
-                        <span>📤</span>
-                        <div>Click to upload or drag and drop</div>
-                        <div style="font-size: 0.75rem; margin-top: 0.5rem; color: #94a3b8;">
-                            PNG, JPG, JPEG (max. 5MB)
-                        </div>
-                    </div>
-                `;
-                imagePreview.classList.remove('has-image');
-                
-                // Hide remove button
-                this.style.display = 'none';
+                    reader.onload = e => resolve(e.target.result);
+                    reader.readAsDataURL(file);
+                });
+                uploadedImages.push({ file, dataUrl });
+                renderImageGrid();
             });
             
             // Function to save item to database
@@ -657,60 +685,59 @@
                     
                     console.log('Form data collected');
                     
-                    // Get image file if any
-                    const imageFile = imageUpload.files[0] || null;
-                    
-                    // No image case
-                    if (!imageFile) {
-                        console.log('No image to upload');
-                        
-                        // If editing and no new image uploaded, keep the original image
-                        if (isEditMode && originalImageUrl) {
-                            itemData.image = originalImageUrl;
-                        } else {
-                            itemData.image = 'https://via.placeholder.com/400x300?text=No+Image';
-                        }
-                        
-                        // Save to database directly
+                    // No photos uploaded — keep original or use placeholder
+                    if (uploadedImages.length === 0) {
+                        itemData.image = originalImageUrl || 'https://via.placeholder.com/400x300?text=No+Image';
+                        itemData.additionalImages = [];
                         await saveItemToDatabase(itemData, isEditMode, itemId, statusDiv);
                         return;
                     }
-                    
-                    // Compress image to ≤800px / 70% quality so the base64 fits under Firestore's 1MB field limit
-                    statusDiv.textContent = 'Processing image...';
-                    let compressedFile = imageFile;
-                    if (window.ImageCompressor) {
-                        try {
-                            compressedFile = await window.ImageCompressor.compress(imageFile, {
-                                maxWidth: 800, maxHeight: 800, quality: 0.70
-                            });
-                            console.log(`Compressed: ${Math.round(imageFile.size/1024)}KB → ${Math.round(compressedFile.size/1024)}KB`);
-                        } catch (e) {
-                            console.warn('Compression failed, using original:', e);
+
+                    // Helper: compress a File and return its data URL; existing dataUrls pass through
+                    const compressAndConvert = async (img) => {
+                        if (!img.file) return img.dataUrl; // already a data URL from edit-mode load
+                        let f = img.file;
+                        if (window.ImageCompressor) {
+                            try {
+                                f = await window.ImageCompressor.compress(img.file, { maxWidth: 800, maxHeight: 800, quality: 0.70 });
+                            } catch (e) { console.warn('Compression failed:', e); }
                         }
+                        return new Promise((resolve, reject) => {
+                            const r = new FileReader();
+                            r.onload  = e => resolve(e.target.result);
+                            r.onerror = () => reject(new Error('Failed to read image'));
+                            r.readAsDataURL(f);
+                        });
+                    };
+
+                    statusDiv.textContent = 'Processing images...';
+
+                    itemData.image = await compressAndConvert(uploadedImages[0]);
+
+                    if (uploadedImages.length > 1) {
+                        const extras = [];
+                        for (const img of uploadedImages.slice(1)) {
+                            extras.push(await compressAndConvert(img));
+                        }
+                        itemData.additionalImages = extras;
+                    } else {
+                        itemData.additionalImages = [];
                     }
 
-                    // Convert compressed image to data URL and save to Firestore
-                    const dataUrl = await new Promise((resolve, reject) => {
-                        const r = new FileReader();
-                        r.onload  = e => resolve(e.target.result);
-                        r.onerror = () => reject(new Error('Failed to read image'));
-                        r.readAsDataURL(compressedFile);
-                    });
-
-                    itemData.image = dataUrl;
                     statusDiv.textContent = 'Saving item...';
-
-                    // Don't auto-redirect yet — we need to wait for Vision enrichment
                     const savedDocId = await saveItemToDatabase(itemData, isEditMode, itemId, statusDiv, false);
 
-                    // Wait for Vision enrichment (up to 8s) so the item is immediately searchable by image
-                    if (window.CloudVision && window.CloudVision.available && savedDocId) {
-                        statusDiv.textContent = 'Indexing image for search...';
+                    // Vision enrichment — run on ALL new image files and merge results
+                    const newImageFiles = uploadedImages
+                        .map(img => img.file)
+                        .filter(Boolean); // only newly uploaded files (not existing URLs)
+
+                    if (newImageFiles.length > 0 && window.CloudVision && window.CloudVision.available && savedDocId) {
+                        statusDiv.textContent = `Indexing ${newImageFiles.length > 1 ? newImageFiles.length + ' images' : 'image'} for search...`;
                         try {
                             await Promise.race([
-                                window.CloudVision.enrichItem(savedDocId, imageFile),
-                                new Promise(resolve => setTimeout(resolve, 8000))
+                                window.CloudVision.enrichItemMultipleImages(savedDocId, newImageFiles),
+                                new Promise(resolve => setTimeout(resolve, 12000))
                             ]);
                         } catch (e) {
                             console.warn('Vision enrichment did not complete:', e);

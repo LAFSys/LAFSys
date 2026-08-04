@@ -318,6 +318,12 @@ class ImprovedImageAnalyzer {
           console.log('Query OCR tokens:', queryOcrTokens.map(t => t.token).join(', '));
       }
 
+      // True when the query image has readable product text (brand names, model numbers on packaging).
+      // The aggressive semantic tier (which collapses visual weight) only applies when this is true.
+      // Without it, generic-category searches (all phones share "Mobile phone / Gadget / Smartphone")
+      // would push every phone in the database to 90%+, making color differentiation impossible.
+      const hasOcrEvidence = queryOcrTokens.length >= 2;
+
       // Extract colour words from the query's Vision web entities.
       // Web entity detection matches the image against real-world content, so it
       // identifies the SUBJECT's colour (e.g. "Black" for a black pen) even when
@@ -342,6 +348,38 @@ class ImprovedImageAnalyzer {
       if (queryColorWords.size > 0)
         console.log('[color-check] Query colour words from web entities:', [...queryColorWords].join(', '));
 
+      // Brand groups — each sub-array is a family of keywords that identify one brand.
+      // If the QUERY's web entities match one family and a stored ITEM's title/entities
+      // match a DIFFERENT family, we apply a heavy penalty (see brand-conflict gate below).
+      const BRAND_GROUPS = [
+        ['apple', 'iphone', 'ipad', 'airpods', 'macbook', 'ios'],
+        ['samsung', 'galaxy'],
+        ['google', 'pixel'],
+        ['huawei', 'honor'],
+        ['xiaomi', 'redmi', 'poco'],
+        ['oppo', 'realme'],
+        ['oneplus'],
+        ['sony', 'xperia'],
+        ['motorola', 'moto'],
+        ['nokia'],
+        ['vivo'],
+        ['lg'],
+        ['hp', 'lenovo', 'dell', 'asus', 'acer', 'thinkpad'],
+      ];
+      // Find which brand group the query belongs to (first match wins)
+      let queryBrandGroup = null;
+      for (const ent of queryWebEntities) {
+        const d = ' ' + ent.description + ' ';
+        for (const grp of BRAND_GROUPS) {
+          if (grp.some(b => d.includes(' ' + b + ' ') || d.includes(' ' + b + '\''))) {
+            queryBrandGroup = grp;
+            break;
+          }
+        }
+        if (queryBrandGroup) break;
+      }
+      if (queryBrandGroup) console.log('[brand] Query brand detected:', queryBrandGroup[0]);
+
       // Infer probable category from Vision labels before the item loop
       const inferredCategory = this._inferCategoryFromLabels(queryVisionLabels);
       if (inferredCategory) console.log('Inferred query category:', inferredCategory);
@@ -361,52 +399,59 @@ class ImprovedImageAnalyzer {
         let colorCompareScore = 0;
         let pixelScore = 0;
 
-        // Direct image comparison if item has an image
-        if (item.image) {
-          try {
-            const itemFeatures = await this._getItemImageFeatures(item.image);
+        // Build list of all images for this item (primary + additional)
+        const allItemImages = [];
+        if (item.image && !item.image.includes('placeholder.com')) allItemImages.push(item.image);
+        if (Array.isArray(item.additionalImages)) {
+          for (const src of item.additionalImages) if (src) allItemImages.push(src);
+        }
 
-            // Compare ALL query fingerprint variants (normal, full-image, 90°, 270°) against
-            // ALL stored fingerprint variants (full image, 75% crop, 55% crop).
-            // This matrix lets a tight-crop user search image match a wider stored photo of
-            // the same item — the center-crop of the stored image aligns with the crop.
-            const queryFPs  = [uploadedFingerprint, fullImageFingerprint, rot90Fingerprint, rot270Fingerprint, rot45Fingerprint, rot135Fingerprint].filter(Boolean);
-            const storedFPs = [itemFeatures.fingerprint, itemFeatures.crop75Fingerprint, itemFeatures.crop55Fingerprint].filter(Boolean);
-            const allScores = [];
-            for (const qfp of queryFPs)
-              for (const sfp of storedFPs)
-                allScores.push(this._compareFingerprints(qfp, sfp));
-            hashScore = allScores.length ? Math.max(...allScores) : 0;
+        if (allItemImages.length > 0) {
+          let bestColorRaw = 0; // best colour score across all images, before bg penalty
 
-            const croppedColor = this._compareColorHistograms(uploadedColorHist, itemFeatures.colorHistogram);
-            const fullColor    = this._compareColorHistograms(fullColorHist,     itemFeatures.colorHistogram);
-            colorCompareScore  = Math.max(croppedColor, fullColor);
+          for (const imgSrc of allItemImages) {
+            try {
+              const itemFeatures = await this._getItemImageFeatures(imgSrc);
 
-            // Background-colour penalty: if the query's dominant colour was identified as
-            // coming from the background (ratio check above), penalise stored items whose
-            // primary colour matches that background hue.  This prevents a red background
-            // from falsely boosting a "Red Ballpen" when searching for a black pen.
-            if (queryBgHue >= 0 && item.visionColors && item.visionColors.length > 0) {
-              const storedHue = this._computeHue(item.visionColors[0]);
-              if (storedHue >= 0) { // stored item has a chromatic (non-grey) dominant colour
-                const hueDiff = Math.min(
-                  Math.abs(storedHue - queryBgHue),
-                  360 - Math.abs(storedHue - queryBgHue)
-                );
-                if (hueDiff < 40) {
-                  colorCompareScore *= 0.40;
-                  console.log(`[bg-color] "${item.title}" stored hue ${storedHue.toFixed(0)}° ≈ bg hue ${queryBgHue.toFixed(0)}° → color ×0.40`);
-                }
+              // Fingerprint matrix: all query variants vs all stored variants
+              const queryFPs  = [uploadedFingerprint, fullImageFingerprint, rot90Fingerprint, rot270Fingerprint, rot45Fingerprint, rot135Fingerprint].filter(Boolean);
+              const storedFPs = [itemFeatures.fingerprint, itemFeatures.crop75Fingerprint, itemFeatures.crop55Fingerprint].filter(Boolean);
+              const allFpScores = [];
+              for (const qfp of queryFPs)
+                for (const sfp of storedFPs)
+                  allFpScores.push(this._compareFingerprints(qfp, sfp));
+              hashScore = Math.max(hashScore, allFpScores.length ? Math.max(...allFpScores) : 0);
+
+              // Colour comparison — take best across cropped vs full query image
+              const croppedColor = this._compareColorHistograms(uploadedColorHist, itemFeatures.colorHistogram);
+              const fullColor    = this._compareColorHistograms(fullColorHist,     itemFeatures.colorHistogram);
+              bestColorRaw = Math.max(bestColorRaw, croppedColor, fullColor);
+
+              // Pixel comparison
+              const pixelSrc = fullPixelData || uploadedPixelData;
+              if (pixelSrc && itemFeatures.pixelData) {
+                pixelScore = Math.max(pixelScore, this._comparePixels(pixelSrc, itemFeatures.pixelData));
+              }
+            } catch (e) {
+              console.log('Could not compare image for item:', item.title, e.message);
+            }
+          }
+
+          // Apply background-colour penalty once, based on the item's Cloud Vision dominant colour.
+          // Prevents a red background in the query photo from boosting items that are red.
+          colorCompareScore = bestColorRaw;
+          if (queryBgHue >= 0 && item.visionColors && item.visionColors.length > 0) {
+            const storedHue = this._computeHue(item.visionColors[0]);
+            if (storedHue >= 0) {
+              const hueDiff = Math.min(
+                Math.abs(storedHue - queryBgHue),
+                360 - Math.abs(storedHue - queryBgHue)
+              );
+              if (hueDiff < 40) {
+                colorCompareScore *= 0.40;
+                console.log(`[bg-color] "${item.title}" stored hue ${storedHue.toFixed(0)}° ≈ bg hue ${queryBgHue.toFixed(0)}° → color ×0.40`);
               }
             }
-
-            // Pixel comparison — try full-image data first (higher precision for exact match)
-            const pixelSrc = fullPixelData || uploadedPixelData;
-            if (pixelSrc && itemFeatures.pixelData) {
-              pixelScore = this._comparePixels(pixelSrc, itemFeatures.pixelData);
-            }
-          } catch (e) {
-            console.log('Could not compare image for item:', item.title, e.message);
           }
         }
 
@@ -450,7 +495,20 @@ class ImprovedImageAnalyzer {
           // as a fallback for vocabulary mismatches ("writing implement" vs "pen" title).
           const semanticScore = Math.max(visionLabelScore, labelTitleScore);
 
-          if (semanticScore >= 0.78) {
+          if (semanticScore >= 0.87 && hasOcrEvidence) {
+            // Very strong semantic match AND the query image has readable product text
+            // (brand name, model number on packaging). Collapse visual weight because
+            // background/lighting differences cause color/visual scores to fluctuate.
+            // Gate on hasOcrEvidence so generic label-only matches (all phones share
+            // "Mobile phone / Gadget / Smartphone") don't reach this tier and collapse
+            // the color differentiation that separates same-category items.
+            weightedScore = (
+              semanticScore     * 0.90 +
+              colorCompareScore * 0.05 +
+              visualScore       * 0.02 +
+              categoryScore     * 0.03
+            );
+          } else if (semanticScore >= 0.78) {
             // Strong semantic match confirmed by Vision. Color gets a larger slice here
             // so same-type items with different colours (black pen vs red pen) are
             // correctly ranked — the bbox-cropped colour histogram is the tiebreaker.
@@ -521,6 +579,31 @@ class ImprovedImageAnalyzer {
               weightedScore *= 0.60;                                  // colour conflict → penalty
               console.log(`[color-check] "${item.title}" colour CONFLICT (${conflicted.join(',')}) → ×0.60`);
             }
+          }
+        }
+
+        // ── Brand-conflict gate ──────────────────────────────────────────────────────
+        // All phones share the same generic Vision labels ("Mobile phone", "Gadget",
+        // "Smartphone") so label similarity alone cannot distinguish an iPhone 11 from
+        // a Samsung Galaxy.  Web entities ARE brand-specific.  When the query clearly
+        // belongs to one brand family and the stored item belongs to a DIFFERENT family
+        // (detectable from its title, description, or stored web entities), apply a
+        // heavy penalty so the wrong-brand item drops out of results.
+        if (queryBrandGroup) {
+          const itemBrandText = ' ' + [
+            item.title || '',
+            item.description || '',
+            ...(item.visionWebEntities || []).map(e => e.description || '')
+          ].join(' ').toLowerCase() + ' ';
+
+          const itemBrandGrp = BRAND_GROUPS.find(grp =>
+            grp.some(b => itemBrandText.includes(' ' + b + ' ') ||
+                          itemBrandText.includes(' ' + b + '\''))
+          );
+
+          if (itemBrandGrp && itemBrandGrp !== queryBrandGroup) {
+            weightedScore *= 0.45;
+            console.log(`[brand] "${item.title}" brand conflict (${itemBrandGrp[0]} vs ${queryBrandGroup[0]}) → ×0.45`);
           }
         }
 
@@ -1910,9 +1993,11 @@ class ImprovedImageAnalyzer {
     if (totalMax === 0) return 0;
     const rawScore = totalScore / totalMax;
 
-    // Mild curve: 25%+ raw overlap is a meaningful match for lost-and-found
-    if (rawScore >= 0.50) return 0.85 + (rawScore - 0.50) * 0.30;
-    if (rawScore >= 0.25) return 0.50 + (rawScore - 0.25) * 1.40;
+    // Curve: a strong OCR+label overlap should produce a high semantic score.
+    // Upper tier is steeper so that matching brand text ("aveeno") + category labels
+    // ("personal care", "skin care") reliably pushes rawScore past 0.60+, yielding ≥0.92.
+    if (rawScore >= 0.50) return Math.min(0.99, 0.87 + (rawScore - 0.50) * 0.48);
+    if (rawScore >= 0.25) return 0.50 + (rawScore - 0.25) * 1.48;
     return rawScore * 2.0;
   }
 
