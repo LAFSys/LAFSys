@@ -2613,6 +2613,7 @@
             document.getElementById('userSidebar').classList.add('mobile-open');
             document.getElementById('sidebarOverlay').classList.add('visible');
             document.getElementById('sidebarToggle').textContent = '✕';
+            document.body.style.overflow = 'hidden';
             // Always show header while sidebar is open so user can see context
             document.querySelector('.header')?.classList.remove('header-hidden');
         }
@@ -2620,6 +2621,7 @@
             document.getElementById('userSidebar').classList.remove('mobile-open');
             document.getElementById('sidebarOverlay').classList.remove('visible');
             document.getElementById('sidebarToggle').textContent = '☰';
+            document.body.style.overflow = '';
             // Re-hide header if user is still scrolled down
             if (window.scrollY > 10) {
                 document.querySelector('.header')?.classList.add('header-hidden');
