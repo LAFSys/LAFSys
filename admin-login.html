@@ -385,15 +385,22 @@ async function doAdminLogin() {
         }
 
         // For regular logins, verify admin role in Firestore
-        let isAdmin = false;
-        let adminName = cred.user.displayName || cred.user.email || 'Admin';
+        let isAdmin    = false;
+        let isPending  = false;
+        let isDeclined = false;
+        let adminName  = cred.user.displayName || cred.user.email || 'Admin';
         try {
             const doc = await db.collection('users').doc(cred.user.uid).get();
-            isAdmin = doc.exists && doc.data().role === 'admin';
-            if (doc.exists && doc.data().name) adminName = doc.data().name;
+            if (doc.exists) {
+                const data = doc.data();
+                isAdmin    = data.role === 'admin';
+                isPending  = data.status === 'pending';
+                isDeclined = data.status === 'declined';
+                if (data.name) adminName = data.name;
+            }
         } catch (_) { /* Firestore unreadable — deny to be safe */ }
 
-        if (isAdmin) {
+        if (isAdmin && !isPending && !isDeclined) {
             sessionStorage.setItem('adminLoggedIn', '1');
             sessionStorage.setItem('adminName', adminName);
             window.location.href = 'admin.html';
@@ -401,7 +408,11 @@ async function doAdminLogin() {
             await auth.signOut().catch(() => {});
             btn.disabled = false;
             btn.textContent = 'Login to Admin';
-            showAlert('loginAlert', 'This account does not have admin access.');
+            showAlert('loginAlert', isPending
+                ? 'Your account is pending admin approval. Please wait for an administrator to activate your account.'
+                : isDeclined
+                ? 'Your registration was declined. Please contact the administrator for more information.'
+                : 'This account does not have admin access.');
         }
     } catch (err) {
         isCreating = false;
@@ -539,10 +550,18 @@ async function verifyAndCreate() {
             name:      name,
             email:     email,
             role:      'admin',
+            status:    'pending',
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });
-        sessionStorage.setItem('adminName', name);
-        window.location.href = 'admin.html';
+        await auth.signOut();
+        isCreating = false;
+        btn.disabled = false;
+        btn.textContent = 'Send Verification Code';
+        resetOTPState();
+        showAlert('registerAlert',
+            'Your registration has been submitted. Please wait for an administrator to approve your account before logging in.',
+            'success');
+        return;
     } catch (err) {
         isCreating = false;
         btn.disabled = false;
