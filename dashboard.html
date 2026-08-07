@@ -1449,7 +1449,13 @@
         .ldm-row { display: flex; margin-bottom: 0.75rem; font-size: 1rem; }
         .ldm-lbl { font-weight: 600; color: #64748b; width: 160px; flex-shrink: 0; }
         .ldm-val { color: #334155; }
-        .ldm-actions { display: flex; justify-content: flex-end; margin-top: auto; }
+        .ldm-actions { display: flex; justify-content: flex-end; gap: 0.625rem; margin-top: auto; }
+        .ldm-edit-btn {
+            padding: 0.75rem 1.75rem; background: #1a2e6b;
+            border: none; border-radius: 6px;
+            color: #fff; font-weight: 500; cursor: pointer; font-size: 1rem;
+        }
+        .ldm-edit-btn:hover { background: #162358; }
         .ldm-close-btn {
             padding: 0.75rem 1.75rem; background: #f1f5f9;
             border: none; border-radius: 6px;
@@ -1530,6 +1536,7 @@
             </button>
         </div>
         <span id="userDisplayName" style="display:none"></span>
+        <img src="images/lafsys-logo.png" alt="LAFSys" style="height:64px;width:64px;object-fit:contain;border-radius:10px;background:#fff;padding:4px;flex-shrink:0;">
     </header>
 
     <main class="container">
@@ -1691,7 +1698,7 @@
     <div class="plm-overlay" id="postLostModal">
         <div class="plm-box">
             <button class="plm-close" id="postLostClose">×</button>
-            <h2 class="plm-title">🔍 Report a Lost Item</h2>
+            <h2 class="plm-title" id="plmModalTitle">🔍 Report a Lost Item</h2>
             <form id="postLostForm" novalidate>
                 <div class="plm-group">
                     <label>Item Photos <span style="color:#94a3b8;font-weight:400;font-size:0.78rem;">— up to 4, first is used for search</span></label>
@@ -1773,6 +1780,7 @@
                         <div class="ldm-row"><span class="ldm-lbl">Posted by:</span><span class="ldm-val" id="ldmPostedBy"></span></div>
                     </div>
                     <div class="ldm-actions">
+                        <button class="ldm-edit-btn" id="lostDetailEditBtn" style="display:none;">✏️ Edit</button>
                         <button class="ldm-close-btn" id="lostDetailCloseBtn">Close</button>
                     </div>
                 </div>
@@ -2304,6 +2312,8 @@
         // ── State ──
         let _lostUnsub = null;
         let _plmImages = [];  // [{dataUrl}] — max 4, index 0 is primary
+        let _editMode  = false;
+        let _editDocId = null;
 
         // ── DOM refs (resolved after DOMContentLoaded) ──
         const $ = id => document.getElementById(id);
@@ -2362,18 +2372,61 @@
             $('ldmDate').textContent     = data.dateLost ? new Date(data.dateLost + 'T00:00:00').toLocaleDateString() : '—';
             $('ldmContact').textContent  = data.contactNumber || '—';
             $('ldmPostedBy').textContent = data.userName || data.userEmail || 'Anonymous';
+
+            // Show Edit button only to the item's owner (match by uid or email)
+            const editBtn = $('lostDetailEditBtn');
+            if (editBtn) {
+                const user = window.firebase && firebase.auth().currentUser;
+                const isOwner = user && (
+                    (data.userId && data.userId === user.uid) ||
+                    (data.userEmail && data.userEmail === user.email)
+                );
+                console.log('[LAFSys] Detail open — data.userId:', data.userId, '| data.userEmail:', data.userEmail, '| currentUser uid:', user?.uid, '| email:', user?.email, '| isOwner:', isOwner);
+                editBtn.style.display = isOwner ? '' : 'none';
+                editBtn.onclick = () => { _closeDetail(); _openEditModal(data); };
+            }
+
             overlay.style.display = 'flex';
         }
 
         function _closeDetail() { $('lostDetailModal').style.display = 'none'; }
 
+        // ── Edit existing lost item (pre-fill form) ──
+        function _openEditModal(data) {
+            _editMode  = true;
+            _editDocId = data.id;
+            const today = new Date().toISOString().split('T')[0];
+            $('plmDateLost').max = today;
+            // Pre-fill fields
+            $('plmName').value         = data.title || '';
+            $('plmCategory').value     = data.category || '';
+            $('plmDescription').value  = data.description || '';
+            $('plmLastLocation').value = data.lastLocation || '';
+            $('plmDateLost').value     = data.dateLost || '';
+            $('plmContact').value      = data.contactNumber || '';
+            // Pre-fill images
+            _plmImages = [];
+            if (data.image)            _plmImages.push({ dataUrl: data.image });
+            if (Array.isArray(data.additionalImages)) {
+                data.additionalImages.forEach(u => u && _plmImages.push({ dataUrl: u }));
+            }
+            _renderPlmGrid();
+            $('plmModalTitle').textContent = '✏️ Edit Lost Item';
+            const btn = $('plmSubmitBtn');
+            if (btn) { btn.disabled = false; btn.textContent = 'Save Changes'; }
+            $('plmError').style.display = 'none';
+            $('postLostModal').style.display = 'block';
+        }
+
         // ── Post Lost Item modal ──
         function _openPostModal() {
             const user = window.firebase && firebase.auth().currentUser;
             if (!user) { alert('Please log in to report a lost item.'); return; }
+            _editMode  = false;
+            _editDocId = null;
             const today = new Date().toISOString().split('T')[0];
             $('plmDateLost').max = today;
-            // Always reset button so repeated opens start fresh
+            $('plmModalTitle').textContent = '🔍 Report a Lost Item';
             const btn = $('plmSubmitBtn');
             if (btn) { btn.disabled = false; btn.textContent = 'Post Lost Item'; }
             const errEl = $('plmError');
@@ -2385,6 +2438,9 @@
             $('postLostModal').style.display = 'none';
             $('postLostForm').reset();
             _plmImages = [];
+            _editMode  = false;
+            _editDocId = null;
+            $('plmModalTitle').textContent = '🔍 Report a Lost Item';
             $('plmError').style.display = 'none';
             _renderPlmGrid();
         }
@@ -2447,41 +2503,68 @@
 
             const btn = $('plmSubmitBtn');
             btn.disabled = true;
-            btn.textContent = 'Posting…';
+            btn.textContent = _editMode ? 'Saving…' : 'Posting…';
+            console.log('[LAFSys] Submit — _editMode:', _editMode, '| _editDocId:', _editDocId);
 
             try {
-                let userDoc = {};
-                try {
-                    const snap = await firebase.firestore().collection('users').doc(user.uid).get();
-                    if (snap.exists) userDoc = snap.data();
-                } catch(_) {}
-
-                await firebase.firestore().collection('lostItems').add({
-                    title: name,
-                    category: cat,
-                    description: desc,
-                    lastLocation: location,
-                    dateLost: date,
-                    contactNumber: contact,
+                const db = firebase.firestore();
+                const imagePayload = {
                     image: _plmImages[0] ? _plmImages[0].dataUrl : '',
-                    additionalImages: _plmImages.slice(1).map(i => i.dataUrl),
-                    userId: user.uid,
-                    userName: userDoc.name || user.displayName || '',
-                    userEmail: user.email || '',
-                    postedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    status: 'pending'
-                });
-                _closePostModal();
-                const notice = document.createElement('div');
-                notice.style.cssText = 'position:fixed;top:24px;left:50%;transform:translateX(-50%);background:#f07316;color:#fff;padding:14px 24px;border-radius:8px;z-index:9999;font-size:0.97rem;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,0.2);max-width:90%;font-weight:600;';
-                notice.textContent = '✓ Your item has been submitted and is pending admin approval.';
-                document.body.appendChild(notice);
-                setTimeout(() => notice.remove(), 5000);
+                    additionalImages: _plmImages.slice(1).map(i => i.dataUrl)
+                };
+
+                if (_editMode && _editDocId) {
+                    await db.collection('lostItems').doc(_editDocId).update({
+                        title: name,
+                        category: cat,
+                        description: desc,
+                        lastLocation: location,
+                        dateLost: date,
+                        contactNumber: contact,
+                        ...imagePayload,
+                        status: 'pending',
+                        isEdited: true,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                    _closePostModal();
+                    const notice = document.createElement('div');
+                    notice.style.cssText = 'position:fixed;top:24px;left:50%;transform:translateX(-50%);background:#1a2e6b;color:#fff;padding:14px 24px;border-radius:8px;z-index:9999;font-size:0.97rem;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,0.2);max-width:90%;font-weight:600;';
+                    notice.textContent = '✓ Your changes have been saved and are pending admin approval.';
+                    document.body.appendChild(notice);
+                    setTimeout(() => notice.remove(), 5000);
+                } else {
+                    let userDoc = {};
+                    try {
+                        const snap = await db.collection('users').doc(user.uid).get();
+                        if (snap.exists) userDoc = snap.data();
+                    } catch(_) {}
+
+                    await db.collection('lostItems').add({
+                        title: name,
+                        category: cat,
+                        description: desc,
+                        lastLocation: location,
+                        dateLost: date,
+                        contactNumber: contact,
+                        ...imagePayload,
+                        userId: user.uid,
+                        userName: userDoc.name || user.displayName || '',
+                        userEmail: user.email || '',
+                        postedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                        status: 'pending'
+                    });
+                    _closePostModal();
+                    const notice = document.createElement('div');
+                    notice.style.cssText = 'position:fixed;top:24px;left:50%;transform:translateX(-50%);background:#f07316;color:#fff;padding:14px 24px;border-radius:8px;z-index:9999;font-size:0.97rem;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,0.2);max-width:90%;font-weight:600;';
+                    notice.textContent = '✓ Your item has been submitted and is pending admin approval.';
+                    document.body.appendChild(notice);
+                    setTimeout(() => notice.remove(), 5000);
+                }
             } catch (err) {
-                errEl.textContent = 'Failed to post: ' + (err.message || 'Unknown error');
+                errEl.textContent = (_editMode ? 'Failed to save: ' : 'Failed to post: ') + (err.message || 'Unknown error');
                 errEl.style.display = 'block';
                 btn.disabled = false;
-                btn.textContent = 'Post Lost Item';
+                btn.textContent = _editMode ? 'Save Changes' : 'Post Lost Item';
             }
         }
 

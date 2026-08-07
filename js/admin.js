@@ -176,11 +176,14 @@ function _renderAdminLostItems() {
   container.innerHTML = items.map(item => {
     const isPending   = item.status === 'pending';
     const isDeclined  = item.status === 'declined';
+    const isPendingEdit = isPending && (item.isEdited || item.updatedAt);
     const statusColor = item.status === 'resolved' ? '#10b981'
+                      : isPendingEdit ? '#7c3aed'
                       : isPending   ? '#dc2626'
                       : isDeclined  ? '#64748b'
                       : '#f59e0b';
-    const statusLabel = isPending  ? 'Pending'
+    const statusLabel = isPendingEdit ? 'Pending Edit'
+                      : isPending  ? 'Pending'
                       : isDeclined ? 'Declined'
                       : (item.status || 'active');
     const thumb = item.image
@@ -237,10 +240,15 @@ function _showLostItemModal(item) {
   document.getElementById('liamStatus').textContent   = item.status || 'active';
   document.getElementById('liamDesc').textContent     = item.description || '—';
 
-  // Badge: PENDING / DECLINED / LOST
+  // Badge: PENDING EDIT / PENDING / DECLINED / LOST
+  const isPendingEdit = item.status === 'pending' && (item.isEdited || item.updatedAt);
   const badge = document.getElementById('liamTypeBadge');
   if (badge) {
-    if (item.status === 'pending') {
+    if (isPendingEdit) {
+      badge.textContent = 'PENDING EDIT';
+      badge.style.background = '#ede9fe';
+      badge.style.color = '#6d28d9';
+    } else if (item.status === 'pending') {
       badge.textContent = 'PENDING APPROVAL';
       badge.style.background = '#fef3c7';
       badge.style.color = '#92400e';
@@ -253,6 +261,22 @@ function _showLostItemModal(item) {
       badge.style.background = '#fef3c7';
       badge.style.color = '#b45309';
     }
+  }
+
+  // Edit notice banner
+  let editNotice = document.getElementById('liamEditNotice');
+  if (isPendingEdit) {
+    if (!editNotice) {
+      editNotice = document.createElement('div');
+      editNotice.id = 'liamEditNotice';
+      editNotice.style.cssText = 'background:#ede9fe;border:1px solid #c4b5fd;border-radius:6px;padding:0.6rem 0.85rem;font-size:0.83rem;color:#5b21b6;margin-bottom:0.75rem;display:flex;align-items:center;gap:0.5rem;';
+      editNotice.innerHTML = '<span style="font-size:1rem;">✏️</span><span>The user has submitted edits to this report. Review the changes below and approve or decline.</span>';
+      const descSection = document.querySelector('#lostItemAdminModal .item-detail-section');
+      if (descSection) descSection.parentNode.insertBefore(editNotice, descSection);
+    }
+    editNotice.style.display = 'flex';
+  } else {
+    if (editNotice) editNotice.style.display = 'none';
   }
 
   // Show decline reason in modal if present
@@ -384,7 +408,8 @@ function _sendLostItemNotification(item, type) {
 window._lostItemAdminApprove = function() {
   if (!_lostItemModalId) return;
   const item = _lostItemsCurrent.find(i => i.id === _lostItemModalId);
-  firebase.firestore().collection('lostItems').doc(_lostItemModalId).update({ status: 'active' }).catch(() => {});
+  firebase.firestore().collection('lostItems').doc(_lostItemModalId)
+    .update({ status: 'active', isEdited: firebase.firestore.FieldValue.delete() }).catch(() => {});
   if (item) _sendLostItemNotification(item, 'lost_approved');
   document.getElementById('lostItemAdminModal').style.display = 'none';
 };
@@ -418,7 +443,8 @@ window._lostItemAdminConfirmDecline = function() {
 window._lostItemAdminApproveId = function(id) {
   if (!confirm('Approve this lost item? It will become visible to all users.')) return;
   const item = _lostItemsCurrent.find(i => i.id === id);
-  firebase.firestore().collection('lostItems').doc(id).update({ status: 'active' }).catch(() => {});
+  firebase.firestore().collection('lostItems').doc(id)
+    .update({ status: 'active', isEdited: firebase.firestore.FieldValue.delete() }).catch(() => {});
   if (item) _sendLostItemNotification(item, 'lost_approved');
 };
 
