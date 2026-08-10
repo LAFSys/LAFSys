@@ -263,18 +263,54 @@ function _showLostItemModal(item) {
     }
   }
 
-  // Edit notice banner
+  // Edit diff banner
   let editNotice = document.getElementById('liamEditNotice');
   if (isPendingEdit) {
+    const prev = item.previousData || {};
+    const fields = [
+      { label: 'Item Name',      oldVal: prev.title,         newVal: item.title },
+      { label: 'Category',       oldVal: prev.category,      newVal: item.category },
+      { label: 'Description',    oldVal: prev.description,   newVal: item.description },
+      { label: 'Last Location',  oldVal: prev.lastLocation,  newVal: item.lastLocation },
+      { label: 'Date Lost',      oldVal: prev.dateLost,      newVal: item.dateLost },
+      { label: 'Contact Number', oldVal: prev.contactNumber, newVal: item.contactNumber },
+    ];
+    const changed = fields.filter(f => f.oldVal !== undefined && f.oldVal !== f.newVal);
+    let diffHtml = '<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.6rem;"><span style="font-size:1rem;">✏️</span><strong style="color:#5b21b6;">User submitted edits — review changes below:</strong></div>';
+    if (changed.length > 0) {
+      diffHtml += '<table style="width:100%;border-collapse:collapse;font-size:0.8rem;">';
+      diffHtml += '<tr><th style="text-align:left;padding:3px 6px;color:#7c3aed;font-weight:600;width:110px;">Field</th><th style="text-align:left;padding:3px 6px;color:#dc2626;font-weight:600;">Before</th><th style="text-align:left;padding:3px 6px;color:#16a34a;font-weight:600;">After</th></tr>';
+      changed.forEach(f => {
+        diffHtml += `<tr>
+          <td style="padding:3px 6px;font-weight:500;color:#6d28d9;vertical-align:top;">${f.label}</td>
+          <td style="padding:3px 6px;color:#dc2626;background:#fef2f2;border-radius:3px;vertical-align:top;">${f.oldVal || '—'}</td>
+          <td style="padding:3px 6px;color:#16a34a;background:#f0fdf4;border-radius:3px;vertical-align:top;">${f.newVal || '—'}</td>
+        </tr>`;
+      });
+      diffHtml += '</table>';
+    } else if (Object.keys(prev).length === 0) {
+      diffHtml += '<div style="color:#7c3aed;font-size:0.8rem;">The user updated this report. No field-by-field diff available for older edits.</div>';
+    } else {
+      const photoChanged = prev.image !== undefined && (
+        prev.image !== (item.image || '') ||
+        (prev.images || '[]') !== JSON.stringify(item.images || [])
+      );
+      if (photoChanged) {
+        diffHtml += '<div style="color:#7c3aed;font-size:0.8rem;">Only photos were changed.</div>';
+      } else {
+        diffHtml += '<div style="color:#7c3aed;font-size:0.8rem;">No changes were made.</div>';
+      }
+    }
+
     if (!editNotice) {
       editNotice = document.createElement('div');
       editNotice.id = 'liamEditNotice';
-      editNotice.style.cssText = 'background:#ede9fe;border:1px solid #c4b5fd;border-radius:6px;padding:0.6rem 0.85rem;font-size:0.83rem;color:#5b21b6;margin-bottom:0.75rem;display:flex;align-items:center;gap:0.5rem;';
-      editNotice.innerHTML = '<span style="font-size:1rem;">✏️</span><span>The user has submitted edits to this report. Review the changes below and approve or decline.</span>';
+      editNotice.style.cssText = 'background:#ede9fe;border:1px solid #c4b5fd;border-radius:8px;padding:0.75rem 1rem;margin-bottom:0.75rem;';
       const descSection = document.querySelector('#lostItemAdminModal .item-detail-section');
       if (descSection) descSection.parentNode.insertBefore(editNotice, descSection);
     }
-    editNotice.style.display = 'flex';
+    editNotice.innerHTML = diffHtml;
+    editNotice.style.display = 'block';
   } else {
     if (editNotice) editNotice.style.display = 'none';
   }

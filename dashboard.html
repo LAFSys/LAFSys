@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -1277,30 +1277,32 @@
             border: 1px solid #fca5a5;
         }
         .lost-card-badge {
-            position: absolute; top: 0.4rem; right: 0.4rem;
+            position: absolute; top: 6px; right: 6px;
             background: #ef4444; color: white;
-            font-size: 0.6rem; font-weight: 700;
-            padding: 0.15rem 0.5rem; border-radius: 999px;
+            font-size: 0.6rem; font-weight: 600;
+            padding: 2px 6px; border-radius: 4px;
             letter-spacing: 0.05em; text-transform: uppercase;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.15);
         }
         .lost-card-img {
-            width: 100%; aspect-ratio: 1; background: #fef2f2;
+            width: 100%; height: 180px; background: #fef2f2;
             display: flex; align-items: center; justify-content: center;
-            overflow: hidden; font-size: 2.5rem;
+            overflow: hidden; font-size: 2.5rem; position: relative;
         }
         .lost-card-img img { width:100%; height:100%; object-fit:cover; }
-        .lost-card-body { padding: 0.6rem 0.75rem 0.75rem; }
+        .lost-card-body { padding: 1rem 1.1rem; }
         .lost-card-title {
-            font-weight: 600; font-size: 0.9rem;
-            margin-bottom: 0.25rem;
+            font-weight: 700; font-size: 1rem;
+            margin: 0 0 0.35rem;
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            color: #0f172a;
         }
         .lost-card-cat {
             display: inline-block; background: #fee2e2; color: #991b1b;
-            font-size: 0.68rem; padding: 0.1rem 0.45rem; border-radius: 999px;
-            margin-bottom: 0.35rem;
+            font-size: 0.7rem; font-weight: 500; padding: 0.15rem 0.4rem; border-radius: 0.25rem;
+            margin-bottom: 0.3rem;
         }
-        .lost-card-meta { font-size: 0.72rem; color: #6b7280; }
+        .lost-card-meta { font-size: 0.75rem; color: #64748b; margin-bottom: 0.15rem; }
         .lost-empty {
             padding: 2rem; text-align: center; color: #6b7280;
             background: white; border-radius: 0.5rem;
@@ -1536,7 +1538,7 @@
             </button>
         </div>
         <span id="userDisplayName" style="display:none"></span>
-        <img src="images/lafsys-logo.png" alt="LAFSys" style="height:64px;width:64px;object-fit:contain;border-radius:10px;background:#fff;padding:4px;flex-shrink:0;">
+        <img src="images/lafsys-logo-v2.png" alt="LAFSys" style="height:64px;width:64px;object-fit:contain;border-radius:10px;flex-shrink:0;">
     </header>
 
     <main class="container">
@@ -1570,6 +1572,18 @@
                 <h2 class="lost-section-title">🔍 Lost Items</h2>
                 <button class="btn-report-lost" id="reportLostBtn">+ Report a Lost Item</button>
             </div>
+
+            <!-- My Reports sub-section (shown only when logged in, has own reports) -->
+            <div id="myReportsContainer" style="display:none;">
+                <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.75rem;">
+                    <h3 style="font-size:1rem;font-weight:700;color:#1a2e6b;margin:0;">📋 My Reports</h3>
+                    <span style="font-size:0.75rem;color:#64748b;">(your submitted reports)</span>
+                </div>
+                <div class="lost-items-grid" id="myReportsGrid"></div>
+                <hr style="margin:1.5rem 0;border:none;border-top:1px solid #e2e8f0;">
+                <h3 style="font-size:1rem;font-weight:700;color:#1a2e6b;margin:0 0 0.75rem;">🌐 All Active Reports</h3>
+            </div>
+
             <div class="lost-items-grid" id="lostItemsGrid">
                 <div class="lost-empty" style="grid-column:1/-1">Loading…</div>
             </div>
@@ -2312,48 +2326,91 @@
         // ── State ──
         let _lostUnsub = null;
         let _plmImages = [];  // [{dataUrl}] — max 4, index 0 is primary
-        let _editMode  = false;
-        let _editDocId = null;
+        let _editMode         = false;
+        let _editDocId        = null;
+        let _editOriginalData = null;
 
         // ── DOM refs (resolved after DOMContentLoaded) ──
         const $ = id => document.getElementById(id);
+
+        // ── Build a lost item card element ──
+        function _buildLostCard(data, badgeOverride) {
+            const card = document.createElement('div');
+            card.className = 'lost-item-card';
+            const badge = badgeOverride || { text: 'LOST', color: '#ef4444' };
+            const badgeHtml = `<span class="lost-card-badge" style="background:${badge.color};">${badge.text}</span>`;
+            const imgHtml = data.image
+                ? `<div class="lost-card-img"><img src="${data.image}" alt="${data.title || ''}" onerror="this.parentElement.innerHTML='🔍'">${badgeHtml}</div>`
+                : `<div class="lost-card-img">🔍${badgeHtml}</div>`;
+            const dateStr = data.dateLost ? new Date(data.dateLost + 'T00:00:00').toLocaleDateString() : '';
+            let extraBody = '';
+            if (data.status === 'declined' && data.declineReason) {
+                extraBody = `<div class="lost-card-meta" style="margin-top:4px;color:#dc2626;font-size:0.72rem;">⚠️ ${data.declineReason}</div>`;
+            }
+            card.innerHTML = `
+                ${imgHtml}
+                <div class="lost-card-body">
+                    <div class="lost-card-title">${data.title || 'Untitled'}</div>
+                    <span class="lost-card-cat">${data.category || 'Other'}</span>
+                    <div style="margin-top:0.5rem;">
+                        <div class="lost-card-meta">📍 ${data.lastLocation || '—'}</div>
+                        <div class="lost-card-meta">${dateStr ? '📅 ' + dateStr : ''}</div>
+                        ${extraBody}
+                    </div>
+                </div>`;
+            card.addEventListener('click', () => _openDetail(data));
+            return card;
+        }
 
         // ── Render lost items grid ──
         function _renderLost(snap) {
             const grid = $('lostItemsGrid');
             if (!grid) return;
-            if (!snap || snap.empty) {
-                grid.innerHTML = '<div class="lost-empty" style="grid-column:1/-1">No lost items reported yet.</div>';
-                return;
+
+            const allDocs = (snap && !snap.empty)
+                ? snap.docs.map(d => ({ id: d.id, ...d.data() }))
+                : [];
+
+            // ── My Reports (user's own items, all statuses) ──
+            const curUser = window.firebase && firebase.auth().currentUser;
+            const myReportsGrid = $('myReportsGrid');
+            const myReportsContainer = $('myReportsContainer');
+            if (curUser && myReportsGrid && myReportsContainer) {
+                const myDocs = allDocs
+                    .filter(d => (d.userId && d.userId === curUser.uid) || (d.userEmail && d.userEmail === curUser.email))
+                    .sort((a, b) => ((b.postedAt && b.postedAt.seconds) || 0) - ((a.postedAt && a.postedAt.seconds) || 0));
+
+                if (myDocs.length > 0) {
+                    myReportsContainer.style.display = 'block';
+                    myReportsGrid.innerHTML = '';
+                    myDocs.forEach(data => {
+                        const isPendingEdit = data.status === 'pending' && (data.isEdited || data.updatedAt);
+                        const badge = isPendingEdit
+                            ? { text: 'PENDING EDIT', color: '#7c3aed' }
+                            : data.status === 'pending'
+                            ? { text: 'PENDING', color: '#f59e0b' }
+                            : data.status === 'declined'
+                            ? { text: 'DECLINED', color: '#64748b' }
+                            : { text: 'ACTIVE', color: '#10b981' };
+                        myReportsGrid.appendChild(_buildLostCard(data, badge));
+                    });
+                } else {
+                    myReportsContainer.style.display = 'none';
+                }
             }
-            const docs = snap.docs
-                .map(d => ({ id: d.id, ...d.data() }))
+
+            // ── Public active items grid ──
+            const activeDocs = allDocs
                 .filter(d => d.status === 'active')
                 .sort((a, b) => ((b.postedAt && b.postedAt.seconds) || 0) - ((a.postedAt && a.postedAt.seconds) || 0));
 
-            if (docs.length === 0) {
+            if (activeDocs.length === 0) {
                 grid.innerHTML = '<div class="lost-empty" style="grid-column:1/-1">No lost items reported yet.</div>';
                 return;
             }
             grid.innerHTML = '';
-            docs.forEach(data => {
-                const card = document.createElement('div');
-                card.className = 'lost-item-card';
-                const imgHtml = data.image
-                    ? `<div class="lost-card-img"><img src="${data.image}" alt="${data.title || ''}" onerror="this.parentElement.innerHTML='🔍'"></div>`
-                    : `<div class="lost-card-img">🔍</div>`;
-                const dateStr = data.dateLost ? new Date(data.dateLost + 'T00:00:00').toLocaleDateString() : '';
-                card.innerHTML = `
-                    <span class="lost-card-badge">LOST</span>
-                    ${imgHtml}
-                    <div class="lost-card-body">
-                        <div class="lost-card-title">${data.title || 'Untitled'}</div>
-                        <span class="lost-card-cat">${data.category || 'Other'}</span>
-                        <div class="lost-card-meta">${dateStr ? '📅 ' + dateStr : ''}</div>
-                        <div class="lost-card-meta" style="margin-top:2px;">📍 ${data.lastLocation || '—'}</div>
-                    </div>`;
-                card.addEventListener('click', () => _openDetail(data));
-                grid.appendChild(card);
+            activeDocs.forEach(data => {
+                grid.appendChild(_buildLostCard(data));
             });
         }
 
@@ -2395,6 +2452,16 @@
         function _openEditModal(data) {
             _editMode  = true;
             _editDocId = data.id;
+            _editOriginalData = {
+                title:         data.title        || '',
+                category:      data.category     || '',
+                description:   data.description  || '',
+                lastLocation:  data.lastLocation || '',
+                dateLost:      data.dateLost     || '',
+                contactNumber: data.contactNumber|| '',
+                image:         data.image        || '',
+                images:        JSON.stringify(data.images || [])
+            };
             const today = new Date().toISOString().split('T')[0];
             $('plmDateLost').max = today;
             // Pre-fill fields
@@ -2438,8 +2505,9 @@
             $('postLostModal').style.display = 'none';
             $('postLostForm').reset();
             _plmImages = [];
-            _editMode  = false;
-            _editDocId = null;
+            _editMode         = false;
+            _editDocId        = null;
+            _editOriginalData = null;
             $('plmModalTitle').textContent = '🔍 Report a Lost Item';
             $('plmError').style.display = 'none';
             _renderPlmGrid();
@@ -2524,6 +2592,7 @@
                         ...imagePayload,
                         status: 'pending',
                         isEdited: true,
+                        previousData: _editOriginalData || {},
                         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                     });
                     _closePostModal();
