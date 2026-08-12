@@ -21,12 +21,10 @@ document.addEventListener('DOMContentLoaded', function() {
   activateSection(lastActiveSection);
   
   // Initial loading of all required elements
-  watchFoundItemsStats();  // replaces renderStats() + keeps total/active live
+  watchFoundItemsStats();  // keeps found items total/active live
   renderInbox();
-  watchActiveLostCount();
   watchClaimedResolvedCount();
-  watchPendingLostCount();
-  initAdminLostItems(); // keeps _lostItemsCurrent live for modal lookups
+  initAdminLostItems(); // keeps _lostItemsCurrent live; derives active/pending counts internally
   
   // If not on dashboard, load the appropriate section data
   if (lastActiveSection === 'users') renderUsers();
@@ -143,23 +141,70 @@ function switchSection(section) {
 // ── Admin Lost Items ──────────────────────────────────────────────────────────
 let _lostItemsUnsub = null;
 let _lostItemsCurrent = [];
+let _lostItemsServerReady = false; // true once first non-cache snapshot arrives
 let _lostItemModalId = null;
 let _lostItemCurrentData = null;
 
+function _applyLostItems(items) {
+  _lostItemsCurrent = items;
+  _lostItemsServerReady = true;
+  _renderAdminLostItems();
+  const activeCount  = items.filter(i => (i.status || 'active') === 'active').length;
+  const pendingCount = items.filter(i => i.status === 'pending').length;
+  const activeLostEl = document.getElementById('statActiveLost');
+  if (activeLostEl) activeLostEl.textContent = activeCount;
+  const badge = document.getElementById('pendingLostBadge');
+  if (badge) { badge.textContent = pendingCount; badge.style.display = pendingCount > 0 ? '' : 'none'; }
+}
+
 function initAdminLostItems() {
   if (_lostItemsUnsub) return; // already listening
-  const db = firebase.firestore();
-  _lostItemsUnsub = db.collection('lostItems')
-    .orderBy('postedAt', 'desc')
-    .onSnapshot({ includeMetadataChanges: true }, snap => {
-      _lostItemsCurrent = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      _renderAdminLostItems();
-      // Only re-render dashboard table from server data to avoid stale-cache flashes
-      if (_statsInitialized && !snap.metadata.fromCache) renderRecentItemsWithoutActions();
-      if (_cachedFoundItems) updateStatTrends(_cachedFoundItems, _lostItemsCurrent);
-    }, () => {});
 
-  document.getElementById('lostItemStatusFilter')?.addEventListener('change', _renderAdminLostItems);
+  // Restore from localStorage immediately so items appear before Firestore responds
+  try {
+    const saved = localStorage.getItem('_adminLostCache');
+    if (saved) _applyLostItems(JSON.parse(saved));
+  } catch(e) {}
+
+  let retries = 40;
+  let prevPendingCount = null; // null = first load, don't toast
+  function tryWatch() {
+    try {
+      if (!window.firebase || !firebase.apps || !firebase.apps.length) throw new Error('not ready');
+      const db = firebase.firestore();
+      _lostItemsUnsub = db.collection('lostItems')
+        .orderBy('postedAt', 'desc')
+        .onSnapshot({ includeMetadataChanges: true }, snap => {
+          const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          _applyLostItems(items);
+
+          // Persist to localStorage after server snapshot so next load is instant
+          if (!snap.metadata.fromCache) {
+            try { localStorage.setItem('_adminLostCache', JSON.stringify(items)); } catch(e) {}
+            // Toast for new pending items
+            const pendingCount = items.filter(i => i.status === 'pending').length;
+            if (prevPendingCount !== null && pendingCount > prevPendingCount) {
+              const added = pendingCount - prevPendingCount;
+              showAdminToast(
+                `${added} new lost item report${added > 1 ? 's' : ''} pending approval`,
+                'lost-items'
+              );
+            }
+            prevPendingCount = pendingCount;
+          }
+
+          if (_statsInitialized && !snap.metadata.fromCache) renderRecentItemsWithoutActions();
+          if (_cachedFoundItems) updateStatTrends(_cachedFoundItems, _lostItemsCurrent);
+        }, () => {
+          _lostItemsUnsub = null; // allow retry
+          if (retries-- > 0) setTimeout(tryWatch, 2000);
+        });
+      document.getElementById('lostItemStatusFilter')?.addEventListener('change', _renderAdminLostItems);
+    } catch (e) {
+      if (retries-- > 0) setTimeout(tryWatch, 300);
+    }
+  }
+  tryWatch();
 }
 
 function _renderAdminLostItems() {
@@ -169,22 +214,27 @@ function _renderAdminLostItems() {
   const items = filter === 'all' ? _lostItemsCurrent : _lostItemsCurrent.filter(i => i.status === filter);
 
   if (items.length === 0) {
-    container.innerHTML = '<div style="text-align:center;padding:2rem;color:#6b7280;">No lost items found.</div>';
+    container.innerHTML = _lostItemsServerReady
+      ? '<div style="text-align:center;padding:2rem;color:#6b7280;">No lost items found.</div>'
+      : '<div style="text-align:center;padding:2rem;color:#6b7280;">Loading items…</div>';
     return;
   }
 
   container.innerHTML = items.map(item => {
     const isPending   = item.status === 'pending';
     const isDeclined  = item.status === 'declined';
+    const isArchived  = item.status === 'archived';
     const isPendingEdit = isPending && (item.isEdited || item.updatedAt);
     const statusColor = item.status === 'resolved' ? '#10b981'
                       : isPendingEdit ? '#7c3aed'
                       : isPending   ? '#dc2626'
                       : isDeclined  ? '#64748b'
+                      : isArchived  ? '#94a3b8'
                       : '#f59e0b';
     const statusLabel = isPendingEdit ? 'Pending Edit'
                       : isPending  ? 'Pending'
                       : isDeclined ? 'Declined'
+                      : isArchived ? 'Archived'
                       : (item.status || 'active');
     const thumb = item.image
       ? `<img src="${item.image}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;flex-shrink:0;">`
@@ -315,6 +365,39 @@ function _showLostItemModal(item) {
     if (editNotice) editNotice.style.display = 'none';
   }
 
+  // Show / hide "Deleted by user" row for archived items
+  let archivedByRow = document.getElementById('liamArchivedByRow');
+  if (!archivedByRow) {
+    archivedByRow = document.createElement('div');
+    archivedByRow.id = 'liamArchivedByRow';
+    archivedByRow.className = 'item-detail-row';
+    archivedByRow.innerHTML = `
+      <span class="item-detail-label" style="color:#64748b;">Deleted by:</span>
+      <span class="item-detail-value" id="liamArchivedByText" style="color:#64748b;"></span>`;
+    const statusRow = document.getElementById('liamStatus')?.closest('.item-detail-row');
+    if (statusRow) statusRow.insertAdjacentElement('afterend', archivedByRow);
+  }
+  if (item.status === 'archived') {
+    let who;
+    if (item.archivedByAdmin) {
+      who = `Admin (${item.archivedByAdminName || 'Administrator'})`;
+    } else if (item.archivedByUser) {
+      const name  = item.archivedByName  || item.userName  || '';
+      const email = item.archivedByEmail || item.userEmail || '';
+      who = name
+        ? `${name}${email ? ' (' + email + ')' : ''}`
+        : email || 'User';
+    }
+    if (who) {
+      document.getElementById('liamArchivedByText').textContent = who;
+      archivedByRow.style.display = '';
+    } else {
+      archivedByRow.style.display = 'none';
+    }
+  } else {
+    archivedByRow.style.display = 'none';
+  }
+
   // Show decline reason in modal if present
   const reasonRow = document.getElementById('liamDeclineReasonRow');
   if (reasonRow) {
@@ -338,11 +421,40 @@ function _showLostItemModal(item) {
   if (declinePanel)  declinePanel.style.display  = 'none';
   if (declineReason) declineReason.value         = '';
 
-  if (item.status === 'pending') {
+  // Manage Restore button for archived items
+  let restoreBtn = document.getElementById('liamRestoreBtn');
+  if (!restoreBtn) {
+    restoreBtn = document.createElement('button');
+    restoreBtn.id = 'liamRestoreBtn';
+    restoreBtn.textContent = '↩ Restore';
+    restoreBtn.style.cssText = 'padding:0.5rem 1.25rem;background:#1a2e6b;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:500;';
+    restoreBtn.onclick = () => {
+      firebase.firestore().collection('lostItems').doc(_lostItemModalId).update({
+        status: 'active',
+        archivedByUser:      firebase.firestore.FieldValue.delete(),
+        archivedByName:      firebase.firestore.FieldValue.delete(),
+        archivedByEmail:     firebase.firestore.FieldValue.delete(),
+        archivedByAdmin:     firebase.firestore.FieldValue.delete(),
+        archivedByAdminName: firebase.firestore.FieldValue.delete(),
+        archivedAt:          firebase.firestore.FieldValue.delete()
+      }).catch(() => {});
+      document.getElementById('lostItemAdminModal').style.display = 'none';
+    };
+    approveBtn?.parentNode.appendChild(restoreBtn);
+  }
+
+  if (item.status === 'archived') {
+    if (approveBtn) approveBtn.style.display = 'none';
+    if (declineBtn) declineBtn.style.display = 'none';
+    if (resolveBtn) resolveBtn.style.display = 'none';
+    if (editBtn)    editBtn.style.display    = 'none';
+    restoreBtn.style.display = '';
+  } else if (item.status === 'pending') {
     if (approveBtn) approveBtn.style.display = '';
     if (declineBtn) declineBtn.style.display = '';
     if (resolveBtn) resolveBtn.style.display = 'none';
     if (editBtn)    editBtn.style.display    = 'none';
+    restoreBtn.style.display = 'none';
   } else {
     if (approveBtn) approveBtn.style.display = 'none';
     if (declineBtn) declineBtn.style.display = 'none';
@@ -351,6 +463,7 @@ function _showLostItemModal(item) {
       resolveBtn.textContent = item.status === 'resolved' ? 'Mark as Active' : 'Mark as Resolved';
     }
     if (editBtn) editBtn.style.display = '';
+    restoreBtn.style.display = 'none';
   }
 
   const img   = document.getElementById('liamImage');
@@ -452,7 +565,9 @@ window._lostItemAdminApprove = function() {
 
 window._lostItemAdminShowDecline = function() {
   const panel = document.getElementById('liamDeclinePanel');
-  if (panel) panel.style.display = 'flex';
+  if (panel) { panel.style.display = 'flex'; }
+  const reason = document.getElementById('liamDeclineReason');
+  if (reason) { reason.value = ''; reason.focus(); }
 };
 
 window._lostItemAdminHideDecline = function() {
@@ -470,9 +585,49 @@ window._lostItemAdminConfirmDecline = function() {
     return;
   }
   const item = _lostItemsCurrent.find(i => i.id === _lostItemModalId);
-  firebase.firestore().collection('lostItems').doc(_lostItemModalId)
-    .update({ status: 'declined', declineReason: reason }).catch(() => {});
-  if (item) _sendLostItemNotification({ ...item, _declineReason: reason }, 'lost_declined');
+  const isPendingEdit = item && item.status === 'pending' && (item.isEdited || item.updatedAt);
+  const db = firebase.firestore();
+
+  if (isPendingEdit) {
+    // Declining an edit — restore previous data and keep the item active
+    const prev = item.previousData || {};
+    const restoreFields = {};
+    if (prev.title)         restoreFields.title         = prev.title;
+    if (prev.category)      restoreFields.category      = prev.category;
+    if (prev.description)   restoreFields.description   = prev.description;
+    if (prev.lastLocation)  restoreFields.lastLocation  = prev.lastLocation;
+    if (prev.dateLost)      restoreFields.dateLost      = prev.dateLost;
+    if (prev.contactNumber) restoreFields.contactNumber = prev.contactNumber;
+    if (prev.image)         restoreFields.image         = prev.image;
+    if (prev.images)        restoreFields.additionalImages = JSON.parse(prev.images || '[]');
+    db.collection('lostItems').doc(_lostItemModalId).update({
+      ...restoreFields,
+      status: 'active',
+      isEdited: firebase.firestore.FieldValue.delete(),
+      previousData: firebase.firestore.FieldValue.delete(),
+      updatedAt: firebase.firestore.FieldValue.delete(),
+      editDeclineReason: reason
+    }).catch(() => {});
+    // Notify user that their edit was declined but the original report remains active
+    if (item) {
+      db.collection('notifications').add({
+        userId:    item.userId,
+        type:      'lost_edit_declined',
+        title:     item.title || 'Your item',
+        lostItemId: item.id || null,
+        declineReason: reason,
+        message:   `Your edit to "${item.title || 'your report'}" was declined. Reason: ${reason}. Your original report remains active.`,
+        read:      false,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      }).catch(() => {});
+    }
+  } else {
+    // Declining a brand-new submission — set to declined as normal
+    db.collection('lostItems').doc(_lostItemModalId)
+      .update({ status: 'declined', declineReason: reason }).catch(() => {});
+    if (item) _sendLostItemNotification({ ...item, _declineReason: reason }, 'lost_declined');
+  }
+  window._lostItemAdminHideDecline();
   document.getElementById('lostItemAdminModal').style.display = 'none';
 };
 
@@ -494,17 +649,29 @@ window._lostItemAdminResolve = function() {
 
 window._lostItemAdminDelete = function() {
   if (!_lostItemModalId) return;
-  if (!confirm('Delete this lost item report? This cannot be undone.')) return;
+  if (!confirm('Delete this lost item report? It will be archived and can be reviewed later.')) return;
   const item = _lostItemsCurrent.find(i => i.id === _lostItemModalId);
-  firebase.firestore().collection('lostItems').doc(_lostItemModalId).delete().catch(() => {});
+  const adminName = localStorage.getItem('adminName') || 'Admin';
+  firebase.firestore().collection('lostItems').doc(_lostItemModalId).update({
+    status: 'archived',
+    archivedByAdmin: true,
+    archivedByAdminName: adminName,
+    archivedAt: firebase.firestore.FieldValue.serverTimestamp()
+  }).catch(() => {});
   if (item && item.status === 'pending') _sendLostItemNotification(item, 'lost_declined');
   document.getElementById('lostItemAdminModal').style.display = 'none';
 };
 
 window._lostItemAdminDeleteId = function(id) {
-  if (!confirm('Delete this lost item report? This cannot be undone.')) return;
+  if (!confirm('Delete this lost item report? It will be archived and can be reviewed later.')) return;
   const item = _lostItemsCurrent.find(i => i.id === id);
-  firebase.firestore().collection('lostItems').doc(id).delete().catch(() => {});
+  const adminName = localStorage.getItem('adminName') || 'Admin';
+  firebase.firestore().collection('lostItems').doc(id).update({
+    status: 'archived',
+    archivedByAdmin: true,
+    archivedByAdminName: adminName,
+    archivedAt: firebase.firestore.FieldValue.serverTimestamp()
+  }).catch(() => {});
   if (item && item.status === 'pending') _sendLostItemNotification(item, 'lost_declined');
 };
 
@@ -611,25 +778,39 @@ let _cachedFoundItems = null;
 
 // Real-time watcher for Total Items + Active Found Items stats and recent table
 function watchFoundItemsStats() {
+  // Restore from localStorage immediately so Found Items renders before Firestore responds
+  try {
+    const saved = localStorage.getItem('_adminFoundCache');
+    if (saved) {
+      _cachedFoundItems = JSON.parse(saved);
+      const safe = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = String(v); };
+      safe('statTotalItems', _cachedFoundItems.length);
+      safe('statActive', _cachedFoundItems.filter(i => i.status === 'active').length);
+      const activeNav = document.querySelector('.nav-link.active');
+      if (activeNav && activeNav.getAttribute('data-section') === 'items') renderAllItems();
+    }
+  } catch(e) {}
+
   let retries = 40;
   function tryWatch() {
     try {
       if (!window.firebase || !firebase.apps || !firebase.apps.length) throw new Error('not ready');
-      // includeMetadataChanges lets us tell cache snapshots from server snapshots.
-      // Firebase offline persistence fires a cache snapshot first (often empty/stale),
-      // which would set _cachedFoundItems=[] and render "No items found" before the
-      // real data arrives. We update stats from cache (quick feedback) but only
-      // populate _cachedFoundItems and render the table from the server snapshot.
       firebase.firestore().collection('items').onSnapshot({ includeMetadataChanges: true }, snap => {
         const safe = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = String(v); };
         safe('statTotalItems', snap.size);
         safe('statActive', snap.docs.filter(d => d.data().status === 'active').length);
-        if (snap.metadata.fromCache) return; // keep skeleton until server confirms
-        _statsInitialized = true;
         _cachedFoundItems = snap.docs.map(d => ({ id: d.id, _type: 'found', ...d.data() }));
+        const _activeNav = document.querySelector('.nav-link.active');
+        if (_activeNav && _activeNav.getAttribute('data-section') === 'items') renderAllItems();
+        if (snap.metadata.fromCache) return; // defer stats/trends update until server confirms
+        _statsInitialized = true;
         renderRecentItemsWithoutActions();
         updateStatTrends(_cachedFoundItems, _lostItemsCurrent);
-      }, () => {});
+        // Save to localStorage so next load is instant
+        try { localStorage.setItem('_adminFoundCache', JSON.stringify(_cachedFoundItems)); } catch(e) {}
+      }, () => {
+        if (retries-- > 0) setTimeout(tryWatch, 2000);
+      });
     } catch (e) {
       if (retries-- > 0) setTimeout(tryWatch, 300);
     }
@@ -637,59 +818,7 @@ function watchFoundItemsStats() {
   tryWatch();
 }
 
-function watchActiveLostCount() {
-  let retries = 40;
-  function tryWatch() {
-    try {
-      if (!window.firebase || !firebase.apps || !firebase.apps.length) throw new Error('not ready');
-      firebase.firestore().collection('lostItems')
-        .onSnapshot(snap => {
-          const count = snap.docs.filter(d => (d.data().status || 'active') === 'active').length;
-          const el = document.getElementById('statActiveLost');
-          if (el) el.textContent = count;
-        }, () => {});
-    } catch (e) {
-      if (retries-- > 0) setTimeout(tryWatch, 300);
-    }
-  }
-  tryWatch();
-}
-
-// Notification badge + toast for pending lost item submissions
-function watchPendingLostCount() {
-  let retries = 40;
-  let prevCount = null; // null = first load, don't toast
-  function tryWatch() {
-    try {
-      if (!window.firebase || !firebase.apps || !firebase.apps.length) throw new Error('not ready');
-      firebase.firestore().collection('lostItems').where('status', '==', 'pending')
-        .onSnapshot(snap => {
-          const count = snap.size;
-          const badge = document.getElementById('pendingLostBadge');
-          if (badge) {
-            if (count > 0) {
-              badge.textContent = count;
-              badge.style.display = '';
-            } else {
-              badge.style.display = 'none';
-            }
-          }
-          // Show toast only when a new item arrives after initial load
-          if (prevCount !== null && count > prevCount) {
-            const added = count - prevCount;
-            showAdminToast(
-              `${added} new lost item report${added > 1 ? 's' : ''} pending approval`,
-              'lost-items'
-            );
-          }
-          prevCount = count;
-        }, () => {});
-    } catch (e) {
-      if (retries-- > 0) setTimeout(tryWatch, 300);
-    }
-  }
-  tryWatch();
-}
+// Both watchActiveLostCount and watchPendingLostCount are merged into initAdminLostItems.
 
 function showAdminToast(message, section) {
   const toast = document.createElement('div');
@@ -959,22 +1088,14 @@ function displayReadOnlyRecentItems(items, container) {
 function renderAllItems() {
   const container = document.getElementById('allItemsContainer');
   if (!container) return;
-  
-  // Show loading state
-  container.innerHTML = '<div class="table-row"><div style="grid-column: 1/-1; text-align: center;">Loading all items...</div></div>';
-  
-  // Get items
-  if (window.DataStore?.getItemsAsync) {
-    window.DataStore.getItemsAsync().then(items => {
-      displayItemsWithActions(items, container);
-    }).catch(err => {
-      console.error('Error loading all items:', err);
-      container.innerHTML = '<div class="table-row"><div style="grid-column: 1/-1; text-align: center;">Error loading items</div></div>';
-    });
+
+  // _cachedFoundItems is kept live by watchFoundItemsStats' onSnapshot.
+  // If it's ready, render immediately. If not, show a loading state and wait —
+  // watchFoundItemsStats will call renderAllItems() again once data arrives.
+  if (_cachedFoundItems !== null) {
+    displayItemsWithActions(_cachedFoundItems, container);
   } else {
-    // Fall back to old method
-    const items = window.DataStore?.getItemsSync?.() || [];
-    displayItemsWithActions(items, container);
+    container.innerHTML = '<div class="table-row"><div style="grid-column: 1/-1; text-align: center; color:#64748b;">Loading items…</div></div>';
   }
 }
 

@@ -368,8 +368,8 @@ async function doAdminLogin() {
                         createdAt: firebase.firestore.FieldValue.serverTimestamp()
                     });
                 } catch (_) { /* Firestore write optional — proceed */ }
-                sessionStorage.setItem('adminLoggedIn', '1');
-                sessionStorage.setItem('adminName', 'Administrator');
+                localStorage.setItem('adminLoggedIn', '1');
+                localStorage.setItem('adminName','Administrator');
                 window.location.href = 'admin.html';
                 return;
             }
@@ -379,8 +379,8 @@ async function doAdminLogin() {
         // Shorthand always goes straight through — account is the known admin
         if (isShorthand) {
             const shortName = cred.user.displayName || 'Administrator';
-            sessionStorage.setItem('adminLoggedIn', '1');
-            sessionStorage.setItem('adminName', shortName);
+            localStorage.setItem('adminLoggedIn', '1');
+            localStorage.setItem('adminName',shortName);
             window.location.href = 'admin.html';
             return;
         }
@@ -402,8 +402,8 @@ async function doAdminLogin() {
         } catch (_) { /* Firestore unreadable — deny to be safe */ }
 
         if (isAdmin && !isPending && !isDeclined) {
-            sessionStorage.setItem('adminLoggedIn', '1');
-            sessionStorage.setItem('adminName', adminName);
+            localStorage.setItem('adminLoggedIn', '1');
+            localStorage.setItem('adminName',adminName);
             window.location.href = 'admin.html';
         } else {
             await auth.signOut().catch(() => {});

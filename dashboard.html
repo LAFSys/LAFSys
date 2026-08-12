@@ -1411,8 +1411,8 @@
 
         /* ── Lost Item Detail Modal ── */
         .ldm-overlay {
-            display: none; position: fixed; top:0; left:220px;
-            width: calc(100% - 220px); height:100%;
+            display: none; position: fixed; top:0; left:0;
+            width: 100%; height:100%;
             background: rgba(0,0,0,0.5);
             z-index: 9100;
             align-items: center; justify-content: center;
@@ -1452,6 +1452,12 @@
         .ldm-lbl { font-weight: 600; color: #64748b; width: 160px; flex-shrink: 0; }
         .ldm-val { color: #334155; }
         .ldm-actions { display: flex; justify-content: flex-end; gap: 0.625rem; margin-top: auto; }
+        .ldm-delete-btn {
+            padding: 0.75rem 1.75rem; background: #fee2e2;
+            border: none; border-radius: 6px;
+            color: #b91c1c; font-weight: 500; cursor: pointer; font-size: 1rem;
+        }
+        .ldm-delete-btn:hover { background: #fecaca; }
         .ldm-edit-btn {
             padding: 0.75rem 1.75rem; background: #1a2e6b;
             border: none; border-radius: 6px;
@@ -1573,15 +1579,12 @@
                 <button class="btn-report-lost" id="reportLostBtn">+ Report a Lost Item</button>
             </div>
 
-            <!-- My Reports sub-section (shown only when logged in, has own reports) -->
-            <div id="myReportsContainer" style="display:none;">
-                <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.75rem;">
-                    <h3 style="font-size:1rem;font-weight:700;color:#1a2e6b;margin:0;">📋 My Reports</h3>
-                    <span style="font-size:0.75rem;color:#64748b;">(your submitted reports)</span>
+            <!-- My Reports sub-section (compact list) -->
+            <div id="myReportsContainer" style="display:none;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:0.85rem 1rem 0.6rem;margin-bottom:1.5rem;">
+                <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.6rem;">
+                    <span style="font-size:0.8rem;font-weight:700;color:#1a2e6b;text-transform:uppercase;letter-spacing:0.05em;">📋 My Reports</span>
                 </div>
-                <div class="lost-items-grid" id="myReportsGrid"></div>
-                <hr style="margin:1.5rem 0;border:none;border-top:1px solid #e2e8f0;">
-                <h3 style="font-size:1rem;font-weight:700;color:#1a2e6b;margin:0 0 0.75rem;">🌐 All Active Reports</h3>
+                <div id="myReportsGrid"></div>
             </div>
 
             <div class="lost-items-grid" id="lostItemsGrid">
@@ -1794,6 +1797,7 @@
                         <div class="ldm-row"><span class="ldm-lbl">Posted by:</span><span class="ldm-val" id="ldmPostedBy"></span></div>
                     </div>
                     <div class="ldm-actions">
+                        <button class="ldm-delete-btn" id="lostDetailDeleteBtn" style="display:none;">🗑️ Delete</button>
                         <button class="ldm-edit-btn" id="lostDetailEditBtn" style="display:none;">✏️ Edit</button>
                         <button class="ldm-close-btn" id="lostDetailCloseBtn">Close</button>
                     </div>
@@ -2377,7 +2381,7 @@
             const myReportsContainer = $('myReportsContainer');
             if (curUser && myReportsGrid && myReportsContainer) {
                 const myDocs = allDocs
-                    .filter(d => (d.userId && d.userId === curUser.uid) || (d.userEmail && d.userEmail === curUser.email))
+                    .filter(d => ((d.userId && d.userId === curUser.uid) || (d.userEmail && d.userEmail === curUser.email)) && d.status !== 'archived')
                     .sort((a, b) => ((b.postedAt && b.postedAt.seconds) || 0) - ((a.postedAt && a.postedAt.seconds) || 0));
 
                 if (myDocs.length > 0) {
@@ -2386,13 +2390,35 @@
                     myDocs.forEach(data => {
                         const isPendingEdit = data.status === 'pending' && (data.isEdited || data.updatedAt);
                         const badge = isPendingEdit
-                            ? { text: 'PENDING EDIT', color: '#7c3aed' }
+                            ? { text: 'Pending Edit', color: '#7c3aed', bg: '#ede9fe' }
                             : data.status === 'pending'
-                            ? { text: 'PENDING', color: '#f59e0b' }
+                            ? { text: 'Pending', color: '#92400e', bg: '#fef3c7' }
                             : data.status === 'declined'
-                            ? { text: 'DECLINED', color: '#64748b' }
-                            : { text: 'ACTIVE', color: '#10b981' };
-                        myReportsGrid.appendChild(_buildLostCard(data, badge));
+                            ? { text: 'Declined', color: '#475569', bg: '#f1f5f9' }
+                            : { text: 'Active', color: '#065f46', bg: '#d1fae5' };
+
+                        const row = document.createElement('div');
+                        row.style.cssText = 'display:flex;align-items:center;gap:0.65rem;padding:0.45rem 0.5rem;border-radius:7px;cursor:pointer;transition:background 0.15s;';
+                        row.onmouseenter = () => row.style.background = '#e2e8f0';
+                        row.onmouseleave = () => row.style.background = '';
+                        const thumb = data.image
+                            ? `<img src="${data.image}" style="width:38px;height:38px;border-radius:5px;object-fit:cover;flex-shrink:0;" onerror="this.style.display='none'">`
+                            : `<div style="width:38px;height:38px;border-radius:5px;background:#e2e8f0;display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0;">🔍</div>`;
+                        const declineNote = data.status === 'declined' && data.declineReason
+                            ? `<span style="font-size:0.68rem;color:#dc2626;margin-left:0.3rem;">— ${data.declineReason}</span>`
+                            : '';
+                        row.innerHTML = `
+                            ${thumb}
+                            <div style="flex:1;min-width:0;">
+                                <div style="font-size:0.82rem;font-weight:600;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${data.title || 'Untitled'}</div>
+                                <div style="font-size:0.7rem;color:#64748b;">${data.category || ''}</div>
+                            </div>
+                            <div style="display:flex;align-items:center;flex-shrink:0;">
+                                <span style="font-size:0.68rem;font-weight:600;padding:0.18rem 0.55rem;border-radius:999px;background:${badge.bg};color:${badge.color};">${badge.text}</span>
+                                ${declineNote}
+                            </div>`;
+                        row.addEventListener('click', () => _openDetail(data));
+                        myReportsGrid.appendChild(row);
                     });
                 } else {
                     myReportsContainer.style.display = 'none';
@@ -2430,23 +2456,48 @@
             $('ldmContact').textContent  = data.contactNumber || '—';
             $('ldmPostedBy').textContent = data.userName || data.userEmail || 'Anonymous';
 
-            // Show Edit button only to the item's owner (match by uid or email)
-            const editBtn = $('lostDetailEditBtn');
+            // Show Edit / Delete buttons only to the item's owner
+            const editBtn   = $('lostDetailEditBtn');
+            const deleteBtn = $('lostDetailDeleteBtn');
+            const user = window.firebase && firebase.auth().currentUser;
+            const isOwner = user && (
+                (data.userId && data.userId === user.uid) ||
+                (data.userEmail && data.userEmail === user.email)
+            );
+            console.log('[LAFSys] Detail open — data.userId:', data.userId, '| data.userEmail:', data.userEmail, '| currentUser uid:', user?.uid, '| email:', user?.email, '| isOwner:', isOwner);
             if (editBtn) {
-                const user = window.firebase && firebase.auth().currentUser;
-                const isOwner = user && (
-                    (data.userId && data.userId === user.uid) ||
-                    (data.userEmail && data.userEmail === user.email)
-                );
-                console.log('[LAFSys] Detail open — data.userId:', data.userId, '| data.userEmail:', data.userEmail, '| currentUser uid:', user?.uid, '| email:', user?.email, '| isOwner:', isOwner);
                 editBtn.style.display = isOwner ? '' : 'none';
                 editBtn.onclick = () => { _closeDetail(); _openEditModal(data); };
+            }
+            if (deleteBtn) {
+                deleteBtn.style.display = isOwner ? '' : 'none';
+                deleteBtn.onclick = () => _deleteOwnReport(data);
             }
 
             overlay.style.display = 'flex';
         }
 
         function _closeDetail() { $('lostDetailModal').style.display = 'none'; }
+
+        function _deleteOwnReport(data) {
+            if (!confirm(`Delete your report for "${data.title || 'this item'}"? It will be removed from public view.`)) return;
+            const db = firebase.firestore();
+            const user = window.firebase && firebase.auth().currentUser;
+            db.collection('lostItems').doc(data.id).update({
+                status: 'archived',
+                archivedByUser: true,
+                archivedByName:  data.userName  || user?.displayName || '',
+                archivedByEmail: data.userEmail || user?.email       || '',
+                archivedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }).then(() => {
+                _closeDetail();
+                const notice = document.createElement('div');
+                notice.style.cssText = 'position:fixed;top:24px;left:50%;transform:translateX(-50%);background:#475569;color:#fff;padding:14px 24px;border-radius:8px;z-index:9999;font-size:0.97rem;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,0.2);max-width:90%;font-weight:600;';
+                notice.textContent = '🗑️ Report deleted.';
+                document.body.appendChild(notice);
+                setTimeout(() => notice.remove(), 3000);
+            }).catch(() => alert('Failed to delete. Please try again.'));
+        }
 
         // ── Edit existing lost item (pre-fill form) ──
         function _openEditModal(data) {
@@ -2582,6 +2633,27 @@
                 };
 
                 if (_editMode && _editDocId) {
+                    // Check if anything actually changed before submitting
+                    const orig = _editOriginalData || {};
+                    const origImage  = orig.image  || '';
+                    const origImages = orig.images || '[]';
+                    const textUnchanged = orig.title         === name     &&
+                                         orig.category      === cat      &&
+                                         orig.description   === desc     &&
+                                         orig.lastLocation  === location &&
+                                         orig.dateLost      === date     &&
+                                         orig.contactNumber === contact;
+                    const imageUnchanged = origImage  === (imagePayload.image || '') &&
+                                          origImages  === JSON.stringify(imagePayload.additionalImages || []);
+                    if (textUnchanged && imageUnchanged) {
+                        btn.disabled = false;
+                        btn.textContent = 'Save Changes';
+                        const errNoChange = $('plmError');
+                        errNoChange.textContent = 'No changes were made. Edit a field to save.';
+                        errNoChange.style.display = 'block';
+                        return;
+                    }
+
                     await db.collection('lostItems').doc(_editDocId).update({
                         title: name,
                         category: cat,
@@ -2712,6 +2784,7 @@
 
         function _showSection(which) {
             _activeSection = which;
+            localStorage.setItem('dashActiveSection', which);
             const foundSec  = document.getElementById('lostItemsSection');   // Lost Items section
             const lostSec   = document.querySelector('.items-section');        // Found Items section
             const filters   = document.querySelector('.filters');
@@ -2872,11 +2945,17 @@
                 _closeMobileSidebar();
             });
 
-            // Initially hide non-default sections (found is default)
+            // Restore last active section (defaults to 'found' if never set)
+            const _savedSection = localStorage.getItem('dashActiveSection') || 'found';
+
+            // Initially hide all non-default sections, then reveal via _showSection
             const lostSec = document.getElementById('lostItemsSection');
             if (lostSec) lostSec.style.display = 'none';
             const howSec = document.getElementById('howItWorksSection');
             if (howSec) howSec.style.display = 'none';
+
+            // Apply the saved section immediately
+            _showSection(_savedSection);
 
             // Found Items nav
             document.getElementById('usbNavFound').addEventListener('click', () => { _showSection('found'); _closeMobileSidebar(); });
@@ -3236,13 +3315,18 @@
         }
 
         function _showToast(notif) {
-            const isApproved = notif.type === 'lost_approved';
-            const icon       = isApproved ? '✅' : '❌';
-            const title      = isApproved ? 'Lost Item Approved' : 'Lost Item Declined';
-            const accent     = isApproved ? '#10b981' : '#ef4444';
+            const isApproved   = notif.type === 'lost_approved';
+            const isEditDeclined = notif.type === 'lost_edit_declined';
+            const icon  = isApproved ? '✅' : '❌';
+            const title = isApproved    ? 'Lost Item Approved'
+                        : isEditDeclined ? 'Edit Request Declined'
+                        : 'Lost Item Declined';
+            const accent = isApproved ? '#10b981' : '#ef4444';
 
             let body = notif.message || '';
-            if (!isApproved && notif.declineReason) {
+            if (isEditDeclined) {
+                body = `Your request to edit "<strong>${notif.title || 'your report'}</strong>" was declined.<br><span style="opacity:0.85;">Reason: ${notif.declineReason || ''}</span><br><span style="opacity:0.75;font-size:0.9em;">Your original report remains active.</span>`;
+            } else if (!isApproved && notif.declineReason) {
                 body = `Your lost item report "<strong>${notif.title || 'item'}</strong>" was declined.<br><span style="opacity:0.85;">Reason: ${notif.declineReason}</span>`;
             } else if (isApproved) {
                 body = `Your lost item report "<strong>${notif.title || 'item'}</strong>" has been approved and is now visible to everyone.`;

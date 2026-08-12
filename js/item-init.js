@@ -7,7 +7,6 @@
 
 // Initialize Firebase with proper configuration if not already done
 if (typeof firebase !== 'undefined' && !firebase.apps.length) {
-    // Firebase configuration
     const firebaseConfig = {
         apiKey: "AIzaSyBGH1-fruNM0GPOLpOjfOIxHpLgqzt8fe0",
         authDomain: "lafsys.firebaseapp.com",
@@ -17,10 +16,10 @@ if (typeof firebase !== 'undefined' && !firebase.apps.length) {
         appId: "1:103945210522:web:f5a51c84653a0cab10ed23",
         measurementId: "G-EJ2X0PTDNH"
     };
-
-    // Initialize Firebase
     firebase.initializeApp(firebaseConfig);
-    console.log('Firebase initialized in item-init.js');
+    // Enable persistence here (synchronously after init) so it is always set
+    // before any DOMContentLoaded Firestore queries run.
+    firebase.firestore().enablePersistence({ synchronizeTabs: true }).catch(() => {});
 }
 
 // Add Firebase configuration and initialization to any page that includes this script

@@ -1052,15 +1052,7 @@
                                         <button id="liamResolveBtn" onclick="window._lostItemAdminResolve()" style="padding:0.5rem 1.25rem; background:#10b981; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:500;">Mark as Resolved</button>
                                         <button id="liamDeclineBtn" onclick="window._lostItemAdminShowDecline()" style="display:none; padding:0.5rem 1.25rem; background:#ef4444; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:500;">Decline</button>
                                     </div>
-                                    <!-- Decline reason panel (hidden by default) -->
-                                    <div id="liamDeclinePanel" style="display:none; flex-direction:column; gap:0.5rem; background:#fff5f5; border:1px solid #fecaca; border-radius:6px; padding:0.75rem;">
-                                        <label style="font-size:0.82rem; font-weight:600; color:#b91c1c;">Reason for declining (required)</label>
-                                        <textarea id="liamDeclineReason" rows="2" placeholder="e.g. Insufficient description, duplicate report…" style="width:100%; border:1px solid #fca5a5; border-radius:4px; padding:0.4rem 0.6rem; font-size:0.83rem; resize:vertical; box-sizing:border-box;"></textarea>
-                                        <div style="display:flex; gap:0.5rem;">
-                                            <button onclick="window._lostItemAdminConfirmDecline()" style="padding:0.4rem 1rem; background:#ef4444; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:500; font-size:0.83rem;">Confirm Decline</button>
-                                            <button onclick="window._lostItemAdminHideDecline()" style="padding:0.4rem 1rem; background:#94a3b8; color:#fff; border:none; border-radius:6px; cursor:pointer; font-size:0.83rem;">Cancel</button>
-                                        </div>
-                                    </div>
+                                    <!-- Decline reason panel moved to standalone popup below -->
                                 </div>
                                 <div id="liamEditActions" style="display:none; gap:0.5rem;">
                                     <button id="liamSaveBtn" onclick="window._lostItemAdminSaveEdit()" style="padding:0.5rem 1.25rem; background:#10b981; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:500;">Save Changes</button>
@@ -1082,6 +1074,7 @@
     
     <!-- Firebase Scripts -->
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-storage-compat.js"></script>
     <script src="js/ensure-firebase.js"></script>
@@ -1104,14 +1097,28 @@
     <script src="js/admin-chat-scroll-fix.js"></script>
     <script src="js/admin-search.js"></script>
     <script src="js/inbox-reset.js"></script>
-    
-    <!-- Admin auth guard — instant sessionStorage check, no network wait -->
+
+    <!-- ── Decline Reason Popup ── -->
+    <div id="liamDeclinePanel" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;" onclick="if(event.target===this)window._lostItemAdminHideDecline()">
+        <div style="background:#fff;border-radius:12px;padding:1.75rem 2rem;width:100%;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,0.25);margin:1rem;">
+            <h3 style="margin:0 0 0.35rem;font-size:1.1rem;font-weight:700;color:#0f172a;">Decline Report</h3>
+            <p style="margin:0 0 1rem;font-size:0.85rem;color:#64748b;">Please provide a reason. The user will see this message.</p>
+            <textarea id="liamDeclineReason" rows="3" placeholder="e.g. Insufficient description, duplicate report…" style="width:100%;border:1px solid #e2e8f0;border-radius:8px;padding:0.6rem 0.75rem;font-size:0.88rem;resize:vertical;box-sizing:border-box;font-family:inherit;outline:none;transition:border 0.15s;" onfocus="this.style.borderColor='#ef4444'" onblur="this.style.borderColor='#e2e8f0'"></textarea>
+            <div style="display:flex;gap:0.65rem;margin-top:1rem;justify-content:flex-end;">
+                <button onclick="window._lostItemAdminHideDecline()" style="padding:0.55rem 1.25rem;background:#f1f5f9;color:#475569;border:none;border-radius:7px;cursor:pointer;font-size:0.88rem;font-weight:500;">Cancel</button>
+                <button onclick="window._lostItemAdminConfirmDecline()" style="padding:0.55rem 1.25rem;background:#ef4444;color:#fff;border:none;border-radius:7px;cursor:pointer;font-weight:600;font-size:0.88rem;">Confirm Decline</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin auth guard — check localStorage so session persists across tabs -->
     <script>
-        if (!sessionStorage.getItem('adminLoggedIn')) {
+        if (!localStorage.getItem('adminLoggedIn')) {
             window.location.href = 'admin-login.html';
         }
         function adminLogout() {
-            sessionStorage.removeItem('adminLoggedIn');
+            localStorage.removeItem('adminLoggedIn');
+            localStorage.removeItem('adminName');
             window.location.href = 'admin-login.html';
         }
     </script>
@@ -1197,9 +1204,9 @@
     </script>
 
     <script>
-        // Populate admin name from sessionStorage
+        // Populate admin name from localStorage
         (function() {
-            var name   = sessionStorage.getItem('adminName') || 'Administrator';
+            var name   = localStorage.getItem('adminName') || 'Administrator';
             var nameEl = document.getElementById('adminUserName');
             var rowEl  = document.getElementById('adminUserRow');
             if (nameEl) nameEl.textContent = name;
