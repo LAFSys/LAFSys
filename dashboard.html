@@ -1930,7 +1930,10 @@
                         const data = doc.data();
                         const id   = doc.id;
                         const itemStatus = data.status || 'active';
-                        if (itemStatus === 'claimed' || itemStatus === 'returned' || itemStatus === 'disposed') return;
+                        if (itemStatus === 'claimed' || itemStatus === 'returned' || itemStatus === 'disposed' || itemStatus === 'archived') {
+                            delete window._itemDataCache?.[id]; // evict stale cache so modal can't show old data
+                            return;
+                        }
 
                         const dateFound     = data.date ? (typeof data.date.toDate === 'function' ? data.date.toDate() : new Date(data.date)) : null;
                         const formattedDate = dateFound ? dateFound.toLocaleDateString() : 'Unknown date';

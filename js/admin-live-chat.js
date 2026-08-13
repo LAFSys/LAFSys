@@ -645,6 +645,40 @@ function handleActiveChatsUpdate(snapshot) {
   });
 }
 
+// ── Mobile messenger helpers ──────────────────────────────────────────────────
+
+function getInitials(name) {
+  if (!name) return '?';
+  return name.trim().split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toUpperCase() || '?';
+}
+
+function injectMobileChatHeader(chat) {
+  const existing = document.querySelector('.mob-chat-header');
+  if (existing) existing.remove();
+  if (window.innerWidth > 768) return;
+
+  const header = document.createElement('div');
+  header.className = 'mob-chat-header';
+  const name = chat?.userName || 'Chat';
+  header.innerHTML = `
+    <button class="mob-back-btn" aria-label="Back">&#8592;</button>
+    <div class="mob-header-avatar">${getInitials(name)}</div>
+    <div class="mob-header-name">${name}</div>
+  `;
+  const chatMain = document.querySelector('.chat-main-area');
+  if (chatMain) chatMain.insertBefore(header, chatMain.firstChild);
+  header.querySelector('.mob-back-btn').addEventListener('click', closeMobileChat);
+}
+
+function closeMobileChat() {
+  const liveBody = document.querySelector('.live-chat-body');
+  if (liveBody) liveBody.classList.remove('mobile-chat-open');
+  const header = document.querySelector('.mob-chat-header');
+  if (header) header.remove();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 // Update the active chats sidebar
 function updateActiveChatsUI(hasChats) {
   if (!hasChats) {
@@ -671,9 +705,20 @@ function updateActiveChatsUI(hasChats) {
     const lastMessage = chat.lastMessage || 'New chat';
     const timestamp = chat.lastTimestamp ? formatTimestamp(chat.lastTimestamp) : '';
     
+    const initials = getInitials(chat.userName || '?');
     li.innerHTML = `
+      <div class="mob-avatar">${initials}</div>
+      <div class="mob-text">
+        <div class="mob-row-top">
+          <span class="chat-item-user">${chat.userName || 'Unknown User'}</span>
+          <span class="mob-time">${timestamp}</span>
+        </div>
+        <div class="mob-row-bot">
+          <span class="mob-preview">${lastMessage}</span>
+          ${chat.unreadCount ? `<span class="mob-unread">${chat.unreadCount}</span>` : ''}
+        </div>
+      </div>
       <button class="chat-delete-btn" title="Remove from inbox" data-chat-id="${chat.id}">×</button>
-      <div class="chat-item-user">${chat.userName || 'Unknown User'}</div>
       ${chat.itemId && chat.itemTitle ? `<div class="chat-item-inquiry chat-item-clickable" data-item-id="${chat.itemId}">📦 ${chat.itemTitle}</div>` : (chat.lostItemId && chat.lostItemTitle ? `<div class="chat-item-inquiry">🔍 ${chat.lostItemTitle}</div>` : '')}
       <div class="chat-item-preview">${lastMessage}</div>
       <div class="chat-item-time">${timestamp}</div>
@@ -681,25 +726,28 @@ function updateActiveChatsUI(hasChats) {
     `;
 
     // Replace email with registered full name — Firestore first, then Cloud Function fallback
+    const updateName = (resolvedName) => {
+      const nameEl = li.querySelector('.chat-item-user');
+      if (nameEl) nameEl.textContent = resolvedName;
+      const avatarEl = li.querySelector('.mob-avatar');
+      if (avatarEl) avatarEl.textContent = getInitials(resolvedName);
+    };
     if (chat.userId) {
       const uid = chat.userId;
       if (resolvedNameCache[uid]) {
-        li.querySelector('.chat-item-user').textContent = resolvedNameCache[uid];
+        updateName(resolvedNameCache[uid]);
       } else {
         firebase.firestore().collection('users').doc(uid).get()
           .then(u => {
-            const nameEl = li.querySelector('.chat-item-user');
-            if (!nameEl) return;
             if (u.exists && u.data().name) {
               resolvedNameCache[uid] = u.data().name;
-              nameEl.textContent = u.data().name;
+              updateName(u.data().name);
             } else {
               firebase.functions().httpsCallable('getUserDisplayName')({ uid })
                 .then(result => {
                   if (result.data && result.data.name) {
                     resolvedNameCache[uid] = result.data.name;
-                    const el = li.querySelector('.chat-item-user');
-                    if (el) el.textContent = result.data.name;
+                    updateName(result.data.name);
                   }
                 }).catch(() => {});
             }
@@ -834,7 +882,14 @@ function selectChat(chatId) {
   
   // Show chat controls
   chatControls.style.display = '';
-  
+
+  // Mobile: switch to full-screen chat view
+  if (window.innerWidth <= 768) {
+    const liveBody = document.querySelector('.live-chat-body');
+    if (liveBody) liveBody.classList.add('mobile-chat-open');
+    injectMobileChatHeader(currentChatUser);
+  }
+
   // Load chat messages
   loadChatMessages(chatId);
   
@@ -1332,6 +1387,13 @@ function addChatStyles() {
       opacity: 0.7;
     }
     
+    /* Desktop: hide mobile-messenger elements */
+    .mob-avatar { display: none; }
+    .mob-text   { display: contents; }
+    .mob-row-top, .mob-row-bot { display: contents; }
+    .mob-time, .mob-preview, .mob-unread { display: none; }
+    .mob-chat-header { display: none; }
+
     .chat-item-time {
       font-size: 0.75rem;
       color: #6b7280;
@@ -1771,6 +1833,291 @@ function addChatStyles() {
       margin: 0.5rem 0;
       border-radius: 6px;
       font-size: 0.875rem;
+    }
+
+    @media (max-width: 768px) {
+      /* ── Hide title bar ── */
+      .live-chat-title-bar { display: none !important; }
+
+      /* ── Two-view switcher ── */
+      .live-chat-body { flex-direction: column !important; overflow: hidden !important; }
+
+      /* Default: chat list fills the screen */
+      .active-chats-sidebar {
+        width: 100% !important;
+        flex: 1 !important;
+        height: auto !important;
+        max-height: none !important;
+        min-height: 0 !important;
+        border-right: none !important;
+        overflow-y: auto !important;
+        background: #fff !important;
+      }
+      .chat-main-area { display: none !important; }
+
+      /* When a chat is open: hide list, show chat full-screen */
+      .live-chat-body.mobile-chat-open .active-chats-sidebar { display: none !important; }
+      .live-chat-body.mobile-chat-open .chat-main-area {
+        display: flex !important;
+        flex: 1 !important;
+        min-height: 0 !important;
+        flex-direction: column !important;
+        overflow: hidden !important;
+      }
+
+      /* ── Chat list header — indent past the floating hamburger ── */
+      .active-chats-sidebar h3 {
+        padding: 0.85rem 1.25rem 0.85rem 60px !important;
+        font-size: 1.25rem !important;
+        font-weight: 700 !important;
+        color: #111 !important;
+        letter-spacing: normal !important;
+        text-transform: none !important;
+        display: block !important;
+        border-bottom: 1px solid #e5e7eb !important;
+        margin: 0 !important;
+      }
+
+      /* ── Messenger-style list items ── */
+      .chat-item {
+        flex-direction: row !important;
+        align-items: center !important;
+        gap: 0.75rem !important;
+        padding: 0.75rem 1rem !important;
+        border-bottom: 1px solid #f0f2f5 !important;
+        border-left: none !important;
+        border-radius: 0 !important;
+        background: #fff !important;
+        transform: none !important;
+        box-shadow: none !important;
+        position: relative !important;
+      }
+      .chat-item:hover {
+        background: #f5f5f5 !important;
+        transform: none !important;
+        box-shadow: none !important;
+      }
+      .chat-item.active { background: #eef0f8 !important; border-left: none !important; box-shadow: none !important; }
+
+      /* ── Avatar ── */
+      .mob-avatar {
+        width: 46px !important; height: 46px !important;
+        border-radius: 50% !important;
+        background: #1a2e6b !important;
+        color: #fff !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        font-size: 1rem !important;
+        font-weight: 700 !important;
+        flex-shrink: 0 !important;
+        line-height: 1 !important;
+      }
+
+      /* ── Text block ── */
+      .mob-text {
+        display: flex !important;
+        flex-direction: column !important;
+        flex: 1 !important;
+        min-width: 0 !important;
+        gap: 0.1rem !important;
+      }
+      .mob-row-top {
+        display: flex !important;
+        align-items: baseline !important;
+        gap: 0.5rem !important;
+      }
+      .mob-row-bot {
+        display: flex !important;
+        align-items: center !important;
+        gap: 0.4rem !important;
+        min-width: 0 !important;
+      }
+
+      /* Name */
+      .chat-item-user {
+        font-size: 0.92rem !important;
+        font-weight: 600 !important;
+        color: #111 !important;
+        margin: 0 !important;
+        flex: 1 !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        display: block !important;
+      }
+      .chat-item-user:before { display: none !important; }
+      .chat-item.active .chat-item-user { color: #111 !important; }
+
+      /* Time (top-right) */
+      .mob-time {
+        font-size: 0.7rem !important;
+        color: #65676b !important;
+        flex-shrink: 0 !important;
+        white-space: nowrap !important;
+        display: block !important;
+      }
+
+      /* Preview (bottom-left, truncated) */
+      .mob-preview {
+        font-size: 0.8rem !important;
+        color: #65676b !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        flex: 1 !important;
+        display: block !important;
+      }
+
+      /* Unread badge (bottom-right) */
+      .mob-unread {
+        min-width: 18px !important; height: 18px !important;
+        border-radius: 9999px !important;
+        background: #f07316 !important;
+        color: #fff !important;
+        font-size: 0.65rem !important;
+        font-weight: 700 !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        padding: 0 4px !important;
+        flex-shrink: 0 !important;
+      }
+
+      /* Hide desktop-only elements inside list items */
+      .chat-item .chat-item-inquiry,
+      .chat-item .chat-item-preview,
+      .chat-item .chat-item-time,
+      .chat-item .unread-badge,
+      .chat-item .chat-delete-btn { display: none !important; }
+
+      /* ── Messenger-style chat header (back + avatar + name) ── */
+      .mob-chat-header {
+        display: flex !important;
+        align-items: center !important;
+        gap: 0.65rem !important;
+        padding: 0.6rem 0.75rem 0.6rem 60px !important;
+        background: #fff !important;
+        border-bottom: 1px solid #e5e7eb !important;
+        flex-shrink: 0 !important;
+      }
+      .mob-back-btn {
+        background: none !important; border: none !important;
+        font-size: 1.5rem !important;
+        color: #1a2e6b !important;
+        cursor: pointer !important;
+        padding: 0.2rem 0.4rem !important;
+        line-height: 1 !important;
+        flex-shrink: 0 !important;
+      }
+      .mob-header-avatar {
+        width: 36px !important; height: 36px !important;
+        border-radius: 50% !important;
+        background: #1a2e6b !important;
+        color: #fff !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        font-size: 0.88rem !important;
+        font-weight: 700 !important;
+        flex-shrink: 0 !important;
+      }
+      .mob-header-name {
+        font-size: 0.95rem !important;
+        font-weight: 600 !important;
+        color: #111 !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        flex: 1 !important;
+      }
+
+      /* ── Chat window height fix ── */
+      .chat-window {
+        flex: 1 !important;
+        height: auto !important;
+        min-height: 0 !important;
+        padding: 0.75rem !important;
+      }
+      .messages-list {
+        flex: 1 !important;
+        min-height: 0 !important;
+        overflow-y: auto !important;
+        padding-bottom: 0.5rem !important;
+        margin-bottom: 0 !important;
+      }
+      /* ── Compact user-info bar ── */
+      .chat-user-info {
+        display: block !important;
+        flex-shrink: 0 !important;
+        padding: 0.45rem 0.85rem !important;
+        margin-bottom: 0 !important;
+        border-radius: 0 !important;
+        border-left: 3px solid #1a2e6b !important;
+        background: #fef3e2 !important;
+        box-shadow: none !important;
+      }
+      /* Name row: hide name (shown in header), keep presence */
+      .chat-user-name-row {
+        display: flex !important;
+        align-items: center !important;
+        gap: 0.4rem !important;
+        margin-bottom: 0.2rem !important;
+      }
+      .chat-user-name { display: none !important; }
+      /* Presence indicator — smaller */
+      .user-presence-indicator {
+        display: flex !important;
+        align-items: center !important;
+        gap: 4px !important;
+      }
+      .user-presence-dot {
+        width: 8px !important;
+        height: 8px !important;
+      }
+      .user-presence-label {
+        font-size: 0.75rem !important;
+        color: #6b7280 !important;
+      }
+      /* Email + start time on one line */
+      .chat-user-email,
+      .chat-start-time {
+        font-size: 0.78rem !important;
+        color: #6b7280 !important;
+        margin: 0 !important;
+        display: inline !important;
+      }
+      .chat-start-time::before { content: ' · '; }
+      /* Item context inline */
+      .chat-item-context {
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 0.3rem !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        background: none !important;
+        box-shadow: none !important;
+        border: none !important;
+        border-radius: 0 !important;
+      }
+      .chat-item-context::before { content: ' · '; font-size: 0.78rem; color: #6b7280; }
+      .chat-item-thumb {
+        width: 18px !important;
+        height: 18px !important;
+        border-radius: 3px !important;
+        object-fit: cover !important;
+      }
+      .chat-item-label { display: none !important; }
+      .chat-item-name { font-size: 0.78rem !important; font-weight: 600 !important; color: #374151 !important; }
+      .chat-item-view-hint { display: none !important; }
+      /* Separate the info bar from the chat messages */
+      .chat-user-info {
+        border-bottom: 1px solid #e5e7eb !important;
+        margin-bottom: 0.75rem !important;
+      }
+
+      .chat-controls { padding: 0.5rem 0.75rem !important; flex-shrink: 0 !important; }
+      .chat-form { margin-bottom: 0 !important; }
     }
   `;
   

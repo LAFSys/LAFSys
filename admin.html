@@ -116,6 +116,11 @@
             flex: 1;
             overflow: hidden;
         }
+        /* Inbox: cancel the mobile padding-top so inbox fills full height.
+           The sidebar toggle is position:fixed so it floats over content without taking space. */
+        .main-content:has(#section-inbox:not([style*="display:none"]):not([style*="display: none"])) {
+            padding-top: 0 !important;
+        }
         
         .admin-header {
             display: flex;
@@ -557,7 +562,7 @@
             top: 12px;
             left: 12px;
             z-index: 1100;
-            background: #1e293b;
+            background: rgba(30, 41, 59, 0.65);
             color: #fff;
             border: none;
             border-radius: 8px;
@@ -567,8 +572,13 @@
             cursor: pointer;
             align-items: center;
             justify-content: center;
-            box-shadow: 0 3px 10px rgba(0,0,0,0.3);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
             line-height: 1;
+            backdrop-filter: blur(2px);
+            transition: background 0.2s;
+        }
+        #adminSidebarToggle:hover {
+            background: rgba(30, 41, 59, 0.9);
         }
         #adminSidebarOverlay {
             display: none;
@@ -614,11 +624,15 @@
             .main-content {
                 padding-top: 3.5rem !important;
             }
-            /* Keep table columns, let it scroll horizontally */
-            .table-header, .table-row {
-                grid-template-columns: 2fr 1fr 1fr 1fr 100px;
-                min-width: 560px;
-            }
+            /* Per-section min-widths so each table scrolls at the right width */
+            #section-items .table-header,
+            #section-items .table-row,
+            #section-dashboard .table-header,
+            #section-dashboard .table-row,
+            #section-users .table-header,
+            #section-users .table-row { min-width: 560px; }
+            #section-lost-items .table-header,
+            #section-lost-items .table-row { min-width: 730px; }
         }
 
         @media (max-width: 768px) {
@@ -640,16 +654,27 @@
             .main-content {
                 padding: 3.5rem 0.75rem 1rem !important;
             }
-            /* Horizontal scroll — don't stack */
+            /* Horizontal scroll — preserve each section's column definition */
             .table-header, .table-row {
-                min-width: 560px;
-                grid-template-columns: 2fr 1fr 1fr 1fr 100px !important;
                 gap: 0 !important;
                 padding: 0.75rem 1rem !important;
                 position: static !important;
             }
+            #section-items .table-header,
+            #section-items .table-row { min-width: 560px !important; }
+            #section-lost-items .table-header,
+            #section-lost-items .table-row { min-width: 730px !important; }
+            #section-users .table-header,
+            #section-users .table-row { min-width: 560px !important; }
             .table-row::before { display: none !important; }
             .action-buttons   { position: static !important; }
+            /* Lost Items header: stack heading and filter on narrow screens */
+            .lost-items-filter-bar {
+                flex-direction: column !important;
+                align-items: flex-start !important;
+                gap: 0.6rem !important;
+            }
+            .lost-items-filter-bar select { width: 100%; }
         }
 
         @media (max-width: 480px) {
@@ -946,7 +971,7 @@
             
             <!-- Lost Items Section -->
             <section id="section-lost-items" class="section-view" style="display:none;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
+                <div class="lost-items-filter-bar" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
                     <h2 style="margin:0;">Lost Item Reports</h2>
                     <select id="lostItemStatusFilter" style="padding:0.45rem 0.75rem; border:1px solid #e2e8f0; border-radius:6px; font-size:0.9rem; cursor:pointer;">
                         <option value="all">All Status</option>

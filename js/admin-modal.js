@@ -109,10 +109,12 @@ function createItemDetailsModal(item) {
   }
   
   // Get status display
-  const statusClass = item.status === 'claimed' ? 'status-completed' : 
-                      item.status === 'soon' ? 'status-pending' : 'status-active';
-  const statusText = item.status === 'claimed' ? 'Claimed' : 
-                     item.status === 'soon' ? 'For Disposal' : 'Active';
+  const statusClass = item.status === 'claimed'   ? 'status-completed' :
+                      item.status === 'soon'      ? 'status-pending'   :
+                      item.status === 'archived'  ? 'status-archived'  : 'status-active';
+  const statusText  = item.status === 'claimed'   ? 'Claimed'      :
+                      item.status === 'soon'      ? 'For Disposal' :
+                      item.status === 'archived'  ? 'Archived'     : 'Active';
   
   // Modal HTML structure - matching User Dashboard exactly
   modal.innerHTML = `
@@ -161,8 +163,13 @@ function createItemDetailsModal(item) {
               <span class="item-detail-label">Found By:</span>
               <span class="item-detail-value">${item.foundBy || 'Unknown'}</span>
             </div>
+            ${item.status === 'archived' ? `
+            <div class="item-detail-row">
+              <span class="item-detail-label" style="color:#6b7280;">Archived by:</span>
+              <span class="item-detail-value" style="color:#6b7280;">Admin (${item.archivedByAdminName || 'Administrator'})</span>
+            </div>` : ''}
           </div>
-          
+
           <div class="item-modal-actions">
             <button class="item-modal-close-btn">Close</button>
           </div>
@@ -358,6 +365,11 @@ function addItemModalStyles() {
     .item-status-badge.status-completed {
       background-color: #dbeafe;
       color: #1e40af;
+    }
+
+    .item-status-badge.status-archived {
+      background-color: #e5e7eb;
+      color: #374151;
     }
     
     .item-detail-section {
