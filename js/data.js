@@ -18,8 +18,10 @@ async function getItems() {
             return [];
         }
         
-        // Convert the query results to an array of items
-        return querySnapshot.docs.map(doc => {
+        // Convert the query results to an array of items, excluding archived
+        return querySnapshot.docs
+            .filter(doc => doc.data().status !== 'archived')
+            .map(doc => {
             const data = doc.data();
             return {
                 id: doc.id,
@@ -111,8 +113,10 @@ async function getItemsByStatus(status) {
             return [];
         }
         
-        // Convert the query results to an array of items
-        return querySnapshot.docs.map(doc => {
+        // Convert the query results to an array of items, excluding archived
+        return querySnapshot.docs
+            .filter(doc => doc.data().status !== 'archived')
+            .map(doc => {
             const data = doc.data();
             return {
                 id: doc.id,
@@ -157,8 +161,9 @@ async function searchItems(query) {
         // Client-side filtering based on search term
         const searchTerm = query.toLowerCase();
         
-        // Filter items by title, description, or location
+        // Filter items by title, description, or location (exclude archived)
         return querySnapshot.docs
+            .filter(doc => doc.data().status !== 'archived')
             .map(doc => {
                 const data = doc.data();
                 return {
@@ -173,7 +178,7 @@ async function searchItems(query) {
                     category: data.category || 'Uncategorized'
                 };
             })
-            .filter(item => 
+            .filter(item =>
                 (item.title && item.title.toLowerCase().includes(searchTerm)) ||
                 (item.description && item.description.toLowerCase().includes(searchTerm)) ||
                 (item.location && item.location.toLowerCase().includes(searchTerm))

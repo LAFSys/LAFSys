@@ -82,7 +82,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const location = (data.location || '').toLowerCase();
                 const category = (data.category || '').toLowerCase();
                 const status = (data.status || 'active').toLowerCase();
-                if (status === 'claimed' || status === 'returned' || status === 'disposed') {
+                if (status === 'claimed' || status === 'returned' || status === 'disposed' || status === 'archived') {
                     return;
                 }
                 

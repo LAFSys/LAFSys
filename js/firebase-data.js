@@ -61,6 +61,7 @@
                 
                 snapshot.forEach(doc => {
                     const data = doc.data();
+                    if (data.status === 'archived') return; // hidden from users
                     items.push({
                         id: doc.id,
                         title: data.title || 'Untitled',

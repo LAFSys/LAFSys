@@ -937,15 +937,17 @@ function statusBadge(status) {
   if (status === 'claimed')   return '<span class="status-badge status-completed">Claimed</span>';
   if (status === 'resolved')  return '<span class="status-badge status-completed">Resolved</span>';
   if (status === 'soon')      return '<span class="status-badge status-pending">Disposal Soon</span>';
+  if (status === 'archived')  return '<span class="status-badge status-archived">Archived</span>';
   return '<span class="status-badge status-active">Active</span>';
 }
 
 // Status dropdown for Items section only
 function statusDropdown(currentStatus) {
   const statuses = [
-    { value: 'active', label: 'Active', class: 'status-active' },
-    { value: 'claimed', label: 'Claimed', class: 'status-completed' },
-    { value: 'soon', label: 'For Disposal', class: 'status-pending' }
+    { value: 'active',   label: 'Active',       class: 'status-active' },
+    { value: 'claimed',  label: 'Claimed',       class: 'status-completed' },
+    { value: 'soon',     label: 'For Disposal',  class: 'status-pending' },
+    { value: 'archived', label: 'Archived',      class: 'status-archived' }
   ];
   
   return `
@@ -1003,7 +1005,10 @@ function renderRecentItemsWithoutActions(statusFilter) {
   }
 
   Promise.all([foundPromise, lostPromise]).then(([foundItems, lostItems]) => {
-    let combined = [...foundItems, ...lostItems]; // both already carry _type
+    let combined = [
+      ...foundItems.filter(i => i.status !== 'archived'),
+      ...lostItems
+    ];
 
     if (statusFilter === 'active')  combined = combined.filter(i => i._type === 'found' && i.status === 'active');
     else if (statusFilter === 'claimed') combined = combined.filter(i =>
@@ -1101,9 +1106,9 @@ function renderAllItems() {
 
 // Display Items WITH ACTIONS (Items section)
 function displayItemsWithActions(items, container) {
-  if (!items.length) { 
-    container.innerHTML = '<div class="table-row"><div style="grid-column: 1/-1; text-align: center;">No items found.</div></div>'; 
-    return; 
+  if (!items.length) {
+    container.innerHTML = '<div class="table-row"><div style="grid-column: 1/-1; text-align: center;">No items found.</div></div>';
+    return;
   }
   
   // Generate items WITH action buttons - NO HEADER
@@ -1168,8 +1173,8 @@ function setupStatusChangeHandlers(container) {
       }
       
       // Confirm status change
-      const statusLabels = { active: 'Active', claimed: 'Claimed', soon: 'For Disposal' };
-      if (!confirm(`Change status to ${statusLabels[newStatus]}?`)) {
+      const statusLabels = { active: 'Active', claimed: 'Claimed', soon: 'For Disposal', archived: 'Archived' };
+      if (!confirm(`Change status to ${statusLabels[newStatus] || newStatus}?`)) {
         e.target.value = oldStatus;
         return;
       }
@@ -1183,10 +1188,23 @@ function setupStatusChangeHandlers(container) {
         
         if (window.firebase?.firestore) {
           const db = firebase.firestore();
-          await db.collection('items').doc(id).update({ 
+          const FV = firebase.firestore.FieldValue;
+          const updateData = {
             status: newStatus,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-          });
+            updatedAt: FV.serverTimestamp()
+          };
+          if (oldStatus === 'archived' && newStatus !== 'archived') {
+            // Restoring — clear archive tracking fields
+            updateData.archivedByAdmin     = FV.delete();
+            updateData.archivedByAdminName = FV.delete();
+            updateData.archivedAt          = FV.delete();
+          } else if (newStatus === 'archived') {
+            // Archiving via dropdown — record who did it
+            updateData.archivedByAdmin     = true;
+            updateData.archivedByAdminName = localStorage.getItem('adminName') || 'Admin';
+            updateData.archivedAt          = FV.serverTimestamp();
+          }
+          await db.collection('items').doc(id).update(updateData);
           
           console.log('✓ Status updated in Firestore:', id, newStatus);
           
@@ -1200,7 +1218,7 @@ function setupStatusChangeHandlers(container) {
           // Show success message
           const successMsg = document.createElement('div');
           successMsg.style.cssText = 'position:fixed;top:20px;right:20px;background:#10b981;color:white;padding:12px 20px;border-radius:8px;z-index:9999;box-shadow:0 4px 6px rgba(0,0,0,0.1);';
-          successMsg.textContent = `✓ Status changed to ${statusLabels[newStatus]}`;
+          successMsg.textContent = `✓ Status changed to ${statusLabels[newStatus] || newStatus}`;
           document.body.appendChild(successMsg);
           setTimeout(() => successMsg.remove(), 3000);
           
@@ -1234,21 +1252,38 @@ function setupActionButtonHandlers(container) {
         window.location.href = 'add-item.html?edit=true&id=' + id;
       }
       else if (action === 'delete') {
-        if (confirm('Are you sure you want to delete this item?')) {
+        if (confirm('Archive this found item? It will remain in the list as Archived.')) {
           row.style.opacity = '0.5';
           row.style.pointerEvents = 'none';
-          
+
           try {
-            // Try to delete from Firebase if available
             if (window.firebase?.firestore) {
-              await firebase.firestore().collection('items').doc(id).delete();
-              console.log('Item deleted from Firebase:', id);
+              const adminName = localStorage.getItem('adminName') || 'Admin';
+              await firebase.firestore().collection('items').doc(id).update({
+                status: 'archived',
+                archivedByAdmin: true,
+                archivedByAdminName: adminName,
+                archivedAt: firebase.firestore.FieldValue.serverTimestamp()
+              });
+              // Update the row in place — no hiding
+              const select = row.querySelector('.status-select');
+              if (select) {
+                select.value = 'archived';
+                select.dataset.currentStatus = 'archived';
+              }
+              row.dataset.status = 'archived';
+              // Sync the in-memory cache so the detail modal shows the correct status
+              if (_cachedFoundItems) {
+                const idx = _cachedFoundItems.findIndex(i => i.id === id);
+                if (idx !== -1) _cachedFoundItems[idx] = { ..._cachedFoundItems[idx], status: 'archived', archivedByAdmin: true, archivedByAdminName: adminName };
+              }
             }
           } catch (error) {
-            console.error('Error deleting item:', error);
+            console.error('Error archiving item:', error);
+          } finally {
+            row.style.opacity = '';
+            row.style.pointerEvents = '';
           }
-          
-          setTimeout(()=>{ row.style.display = 'none'; }, 200);
         }
       }
     });
