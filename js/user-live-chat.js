@@ -607,10 +607,12 @@ function _doStartChat(db, uid, name, email) {
         currentChatItemId = itemId || null;
         
         // Update chat status to active; clear userHidden so it reappears in inbox
+        // Stamp userLastOpenedAt so the unread badge clears immediately on open
         window._hiddenChatIds?.delete(userChatId);
         return db.collection(CHAT_COLLECTION).doc(userChatId).update({
           active: true,
           lastResumedTime: firebase.firestore.FieldValue.serverTimestamp(),
+          userLastOpenedAt: firebase.firestore.FieldValue.serverTimestamp(),
           endedBy: firebase.firestore.FieldValue.delete(),
           userHidden: firebase.firestore.FieldValue.delete()
         }).then(() => {

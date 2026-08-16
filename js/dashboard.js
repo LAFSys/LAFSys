@@ -262,6 +262,18 @@ function openItemDetails(item) {
 
     showSlide(0);
 
+    // Make the main image open a lightbox when clicked
+    mainImg.style.cursor = 'zoom-in';
+    mainImg.onclick = function(e) {
+        e.stopPropagation();
+        var lb = document.getElementById('userImgLightbox');
+        var lbImg = document.getElementById('userImgLightboxImg');
+        if (lb && lbImg && this.src) {
+            lbImg.src = this.src;
+            lb.style.display = 'flex';
+        }
+    };
+
     document.getElementById('modalItemTitle').textContent = item.title || 'Untitled Item';
     document.getElementById('modalItemDescription').textContent = item.description || 'No description available';
     document.getElementById('modalItemCategory').textContent = item.category || 'Uncategorized';

@@ -516,7 +516,23 @@
                 min-width: unset !important;
             }
             .header {
-                padding-left: 56px !important;
+                padding: 0.5rem 0.75rem 0.5rem 56px !important;
+                flex-direction: row !important;
+                flex-wrap: nowrap !important;
+                gap: 0.5rem !important;
+                align-items: center !important;
+            }
+            .logo h1 {
+                font-size: 0.95rem !important;
+                margin-bottom: 0 !important;
+                white-space: nowrap;
+            }
+            .logo p {
+                display: none !important;
+            }
+            .header img[alt="LAFSys"] {
+                height: 36px !important;
+                width: 36px !important;
             }
             /* Hide search from header on mobile — it moves into the sidebar */
             .header .search-container {
@@ -1436,7 +1452,7 @@
             flex: 0 0 45%; min-width: 320px; background: #f8fafc; padding: 1.75rem;
             display: flex; align-items: center; justify-content: center;
         }
-        .ldm-img-col img { max-width:100%; max-height:480px; object-fit:contain; border-radius: 6px; }
+        .ldm-img-col img { max-width:100%; max-height:480px; object-fit:contain; border-radius: 6px; cursor:zoom-in; }
         .ldm-img-placeholder { font-size: 5rem; }
         .ldm-details-col { flex: 1; padding: 2rem 2.5rem 1.5rem 1.75rem; display: flex; flex-direction: column; }
         .ldm-badge {
@@ -1471,8 +1487,37 @@
         }
         .ldm-close-btn:hover { background: #e2e8f0; }
         @media (max-width: 640px) {
-            .ldm-body { flex-direction: column; }
-            .ldm-img-col, .ldm-details-col { width: 100%; min-width: unset; flex: unset; }
+            .ldm-box {
+                width: 92%;
+                max-height: 88vh;
+                overflow-y: auto;
+                border-radius: 12px;
+            }
+            .ldm-body {
+                flex-direction: column;
+                min-height: 0;
+            }
+            .ldm-img-col {
+                width: 100%; min-width: unset; flex: unset;
+                padding: 1rem;
+                max-height: 240px;
+            }
+            .ldm-img-col img { max-height: 200px; }
+            .ldm-details-col {
+                width: 100%; min-width: unset; flex: unset;
+                padding: 1rem 1.25rem 1.25rem;
+            }
+            .ldm-title { font-size: 1.2rem; margin-bottom: 0.35rem; }
+            .ldm-desc { font-size: 0.88rem; margin-bottom: 1rem; }
+            .ldm-badge { margin-bottom: 0.6rem; }
+            .ldm-rows { margin-bottom: 1rem; }
+            .ldm-row { margin-bottom: 0.5rem; font-size: 0.875rem; }
+            .ldm-lbl { width: 120px; }
+            .ldm-actions { gap: 0.4rem; margin-top: 0.5rem; }
+            .ldm-delete-btn, .ldm-edit-btn, .ldm-close-btn {
+                padding: 0.55rem 1rem;
+                font-size: 0.875rem;
+            }
         }
     </style>
 
@@ -1640,7 +1685,7 @@
             <div class="modal-body">
                 <div class="modal-image" id="modalImageArea">
                     <div class="gallery-main">
-                        <img id="modalItemImage" src="" alt="Item">
+                        <img id="modalItemImage" src="" alt="Item" onclick="var s=this.src;if(s&&s!==location.href&&window._openUserLightbox)window._openUserLightbox(s);" style="cursor:zoom-in;">
                         <button type="button" class="gallery-arrow gallery-prev hidden" id="galleryPrev">&#8249;</button>
                         <button type="button" class="gallery-arrow gallery-next hidden" id="galleryNext">&#8250;</button>
                     </div>
@@ -2234,6 +2279,36 @@
                 }
 
                 document.body.appendChild(overlay);
+
+                // Zoom on click for the main image
+                const _fimImg = document.getElementById('fimMainImg');
+                if (_fimImg) {
+                    _fimImg.style.cursor = 'zoom-in';
+                    _fimImg.onclick = function() {
+                        var src = this.src;
+                        alert('CLICK FIRED! src=' + (src||'').substring(0,60));
+                        if (src && src.indexOf('http') !== -1) {
+                            // inline lightbox — no external dependency
+                            var old2 = document.getElementById('_dynLb');
+                            if (old2) old2.remove();
+                            var lb = document.createElement('div');
+                            lb.id = '_dynLb';
+                            lb.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.9);z-index:2147483647;display:flex;align-items:center;justify-content:center;';
+                            var lbImg = document.createElement('img');
+                            lbImg.src = src;
+                            lbImg.style.cssText = 'max-width:92vw;max-height:88vh;object-fit:contain;border-radius:8px;';
+                            lbImg.onclick = function(e){ e.stopPropagation(); };
+                            var lbX = document.createElement('button');
+                            lbX.textContent = '×';
+                            lbX.style.cssText = 'position:absolute;top:1rem;right:1rem;background:rgba(255,255,255,.15);border:none;color:#fff;font-size:2rem;width:42px;height:42px;border-radius:50%;cursor:pointer;';
+                            lbX.onclick = function(e){ e.stopPropagation(); lb.remove(); };
+                            lb.appendChild(lbX);
+                            lb.appendChild(lbImg);
+                            lb.onclick = function(e){ if(e.target===lb) lb.remove(); };
+                            document.body.appendChild(lb);
+                        }
+                    };
+                }
 
                 // Gallery navigation
                 if (_allImgs.length > 1) {
@@ -3053,7 +3128,7 @@
     <script src="js/firebase-data.js?v=2.0"></script>
     <script src="js/dashboard.js?v=3.0"></script>
     <script src="js/debug-dashboard.js"></script>
-    <script src="js/modal.js?v=2.0"></script>
+    <script src="js/modal.js?v=3.0"></script>
     
     <!-- Live chat widget (used by Chat with Staff button in item modals) -->
     <script src="js/user-live-chat.js?v=2.4"></script>
@@ -3424,6 +3499,57 @@
             });
         }
         _waitAndBind(30);
+    })();
+    </script>
+
+    <!-- ── Image Lightbox ── -->
+    <div id="userImgLightbox" onclick="this.style.display='none'" style="display:none;position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,0.88);align-items:center;justify-content:center;cursor:zoom-out;">
+        <button onclick="document.getElementById('userImgLightbox').style.display='none'" style="position:absolute;top:1rem;right:1rem;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:1.4rem;width:36px;height:36px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;">×</button>
+        <img id="userImgLightboxImg" src="" alt="" style="max-width:92vw;max-height:88vh;object-fit:contain;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.5);">
+    </div>
+
+    <script>
+    (function() {
+        function openLightbox(src) {
+            if (!src || src.indexOf('http') === -1) return;
+            var old = document.getElementById('_dynLb');
+            if (old) old.remove();
+            var ov = document.createElement('div');
+            ov.id = '_dynLb';
+            ov.setAttribute('style', 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.9);z-index:99999;display:flex;align-items:center;justify-content:center;cursor:zoom-out;');
+            var xBtn = document.createElement('button');
+            xBtn.textContent = '×';
+            xBtn.setAttribute('style', 'position:absolute;top:1rem;right:1rem;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:1.8rem;width:40px;height:40px;border-radius:50%;cursor:pointer;line-height:1;z-index:2;');
+            xBtn.onclick = function(e){ e.stopPropagation(); ov.remove(); };
+            var img = document.createElement('img');
+            img.src = src;
+            img.setAttribute('style', 'max-width:92vw;max-height:88vh;object-fit:contain;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.5);');
+            img.onclick = function(e){ e.stopPropagation(); };
+            ov.appendChild(xBtn);
+            ov.appendChild(img);
+            ov.onclick = function(){ ov.remove(); };
+            document.body.appendChild(ov);
+            function onEsc(e){ if(e.key==='Escape'){ ov.remove(); document.removeEventListener('keydown',onEsc); } }
+            document.addEventListener('keydown', onEsc);
+        }
+
+        window._openUserLightbox = openLightbox;
+
+        // Capture-phase listener for lost-item modal image AND found-item modal fallback
+        document.addEventListener('click', function(e) {
+            // Lost-item detail modal image
+            var ldmImg = e.target.closest('#ldmImgCol img');
+            if (ldmImg && ldmImg.src && ldmImg.src.indexOf('http') !== -1) {
+                openLightbox(ldmImg.src); return;
+            }
+            // Fallback for the old #itemDetailsModal path
+            var mia = document.getElementById('modalImageArea');
+            if (mia && mia.contains(e.target) && !e.target.closest('.gallery-arrow')) {
+                var img = document.getElementById('modalItemImage');
+                var src2 = img ? img.src : '';
+                if (src2 && src2.indexOf('http') !== -1) { openLightbox(src2); return; }
+            }
+        }, true);
     })();
     </script>
 

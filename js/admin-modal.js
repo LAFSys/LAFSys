@@ -124,7 +124,9 @@ function createItemDetailsModal(item) {
       
       <div class="item-modal-body">
         <div class="item-modal-image-col">
-          <img src="${item.image || 'https://via.placeholder.com/400x300?text=No+Image'}" alt="${item.title || 'Item Image'}">
+          <img src="${item.image || 'https://via.placeholder.com/400x300?text=No+Image'}" alt="${item.title || 'Item Image'}"
+               style="cursor:zoom-in;"
+               onclick="var lb=document.getElementById('adminImgLightbox');if(lb){document.getElementById('adminImgLightboxImg').src=this.src;lb.style.display='flex';}">
         </div>
         
         <div class="item-modal-details-col">
@@ -170,9 +172,6 @@ function createItemDetailsModal(item) {
             </div>` : ''}
           </div>
 
-          <div class="item-modal-actions">
-            <button class="item-modal-close-btn">Close</button>
-          </div>
         </div>
       </div>
     </div>
@@ -217,9 +216,9 @@ function setupModalCloseHandlers(modal) {
   const closeBtn = modal.querySelector('.item-modal-close');
   closeBtn.addEventListener('click', () => closeModal(modal));
   
-  // Close when clicking close button
+  // Close when clicking close button (if present)
   const closeBtnBottom = modal.querySelector('.item-modal-close-btn');
-  closeBtnBottom.addEventListener('click', () => closeModal(modal));
+  if (closeBtnBottom) closeBtnBottom.addEventListener('click', () => closeModal(modal));
   
   // Close when clicking overlay
   const overlay = modal.querySelector('.item-modal-overlay');
@@ -315,132 +314,146 @@ function addItemModalStyles() {
     .item-modal-image-col {
       width: 40%;
       background-color: #f8fafc;
-      padding: 1rem;
+      padding: 1.5rem;
       display: flex;
       align-items: center;
       justify-content: center;
     }
-    
+
     .item-modal-image-col img {
       max-width: 100%;
-      max-height: 400px;
+      max-height: 440px;
       object-fit: contain;
     }
-    
+
     .item-modal-details-col {
       width: 60%;
-      padding: 2rem 3rem 2rem 2rem;
+      padding: 2rem 2.5rem 2rem 2rem;
+      overflow-y: auto;
     }
-    
+
     .item-modal-header {
-      margin-bottom: 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      margin-bottom: 1rem;
     }
-    
+
     .item-modal-header h2 {
-      font-size: 1.5rem;
-      font-weight: bold;
-      margin: 0 0 0.5rem 0;
+      font-size: 1.4rem;
+      font-weight: 700;
+      margin: 0;
       color: #0f172a;
     }
-    
+
     .item-status-badge {
       display: inline-block;
       padding: 0.25rem 0.75rem;
       border-radius: 9999px;
       font-size: 0.75rem;
-      font-weight: 600;
+      font-weight: 700;
+      letter-spacing: 0.05em;
       text-transform: uppercase;
     }
-    
+
     .item-status-badge.status-active {
       background-color: #dcfce7;
       color: #166534;
     }
-    
+
     .item-status-badge.status-pending {
       background-color: #fef3c7;
       color: #92400e;
     }
-    
+
     .item-status-badge.status-completed {
-      background-color: #dbeafe;
-      color: #1e40af;
+      background-color: #ffedd5;
+      color: #2a4599;
     }
 
     .item-status-badge.status-archived {
       background-color: #e5e7eb;
       color: #374151;
     }
-    
+
     .item-detail-section {
-      margin-bottom: 1.5rem;
+      margin-bottom: 1.25rem;
     }
-    
+
     .item-detail-section h3 {
-      font-size: 1rem;
+      font-size: 0.95rem;
       font-weight: 600;
-      color: #334155;
-      margin: 0 0 0.5rem 0;
+      color: #374151;
+      margin: 0 0 0.25rem 0;
     }
-    
+
     .item-detail-section p {
       margin: 0;
       line-height: 1.5;
-      color: #334155;
+      color: #6b7280;
     }
-    
+
     .item-detail-rows {
-      margin-bottom: 2rem;
+      margin-bottom: 1.5rem;
     }
-    
+
     .item-detail-row {
       display: flex;
-      margin-bottom: 0.75rem;
+      align-items: baseline;
+      padding: 0.4rem 0;
     }
-    
+
     .item-detail-label {
       font-weight: 600;
-      color: #64748b;
-      width: 140px;
+      color: #374151;
+      min-width: 140px;
+      font-size: 0.9rem;
     }
-    
+
     .item-detail-value {
-      color: #334155;
-      font-weight: 600;
+      color: #64748b;
+      font-size: 0.9rem;
     }
-    
-    .item-modal-actions {
-      display: flex;
-      justify-content: flex-end;
-    }
-    
-    .item-modal-close-btn {
-      padding: 0.5rem 1.5rem;
-      background-color: #f1f5f9;
-      color: #334155;
-      border: none;
-      border-radius: 0.375rem;
-      font-weight: 500;
-      cursor: pointer;
-      transition: background-color 0.2s;
-    }
-    
-    .item-modal-close-btn:hover {
-      background-color: #e2e8f0;
-    }
-    
+
     @media (max-width: 768px) {
+      .item-modal-content {
+        width: 92%;
+        max-height: 88vh;
+        overflow-y: auto;
+        border-radius: 12px;
+      }
       .item-modal-body {
         flex-direction: column;
+        min-height: 0;
       }
-      
-      .item-modal-image-col,
-      .item-modal-details-col {
+      .item-modal-image-col {
+        width: 100%;
+        padding: 0.75rem 1.25rem;
+        min-height: 0;
+        max-height: 180px;
+      }
+      .item-modal-image-col img {
+        max-height: 150px;
+        object-fit: contain;
         width: 100%;
       }
-      
       .item-modal-details-col {
-        padding: 1.5rem;
+        width: 100%;
+        padding: 1.5rem 1.25rem 1.25rem;
+      }
+      .item-modal-header {
+        margin-bottom: 0.85rem;
+      }
+      .item-modal-header h2 {
+        font-size: 1.2rem;
+      }
+      .item-detail-label {
+        min-width: 120px;
+        font-size: 0.85rem;
+      }
+      .item-detail-value {
+        font-size: 0.85rem;
       }
     }
   `;

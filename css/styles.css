@@ -344,6 +344,7 @@ body {
     height: 100%;
     object-fit: cover;
     display: block;
+    cursor: zoom-in;
 }
 .gallery-arrow {
     position: absolute;
@@ -360,7 +361,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 5;
+    z-index: 11;
     padding: 0;
     line-height: 1;
     transition: background 0.15s;

@@ -228,6 +228,19 @@ function openItemDetails(item) {
         nextBtn.onclick = () => showSlide(currentIdx + 1);
 
         showSlide(0);
+
+        // Remove any leftover zoom overlay from a previous approach
+        var old = document.getElementById('_galleryZoom');
+        if (old) old.remove();
+
+        // Direct click-to-lightbox on the main image
+        mainImg.style.cursor = 'zoom-in';
+        mainImg.onclick = function() {
+            var src = this.src;
+            if (src && src.indexOf('http') !== -1 && typeof window._openUserLightbox === 'function') {
+                window._openUserLightbox(src);
+            }
+        };
     }
 
     // Fill text fields

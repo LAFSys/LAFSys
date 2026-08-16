@@ -241,12 +241,12 @@ function _renderAdminLostItems() {
       : `<div style="width:40px;height:40px;background:#f1f5f9;border-radius:6px;flex-shrink:0;"></div>`;
     return `
       <div class="table-row" style="grid-template-columns:2fr 1fr 1.5fr 1fr 1.2fr 100px 120px;cursor:pointer;" onclick="window._openLostItemModal('${item.id}')">
-        <div style="display:flex;align-items:center;gap:0.75rem;">${thumb}<span style="font-weight:500;">${item.title || '—'}</span></div>
-        <div style="color:#64748b;">${item.category || '—'}</div>
-        <div style="color:#64748b;">${item.lastLocation || '—'}</div>
-        <div style="color:#64748b;">${item.dateLost || '—'}</div>
-        <div style="color:#64748b;">${item.userName || item.userEmail || '—'}</div>
-        <div><span style="background:${statusColor}22;color:${statusColor};padding:2px 10px;border-radius:99px;font-size:0.78rem;font-weight:600;text-transform:capitalize;">${statusLabel}</span></div>
+        <div class="li-name" style="display:flex;align-items:center;gap:0.75rem;">${thumb}<span style="font-weight:500;">${item.title || '—'}</span></div>
+        <div class="li-cat" style="color:#64748b;">${item.category || '—'}</div>
+        <div class="li-loc" style="color:#64748b;">${item.lastLocation || '—'}</div>
+        <div class="li-date" style="color:#64748b;">${item.dateLost || '—'}</div>
+        <div class="li-user" style="color:#64748b;">${item.userName || item.userEmail || '—'}</div>
+        <div class="li-status"><span style="background:${statusColor}22;color:${statusColor};padding:2px 10px;border-radius:99px;font-size:0.78rem;font-weight:600;text-transform:capitalize;">${statusLabel}</span></div>
         <div onclick="event.stopPropagation()" class="action-buttons">
           ${isPending ? `<button class="btn-icon" title="Approve" style="color:#10b981;" onclick="window._lostItemAdminApproveId('${item.id}')"><i data-lucide="check-circle" width="16" height="16"></i></button>` : ''}
           <button class="btn-icon" title="View" onclick="window._openLostItemModal('${item.id}')"><i data-lucide="eye" width="16" height="16"></i></button>
@@ -1062,10 +1062,12 @@ function displayReadOnlyRecentItems(items, container) {
             <div class="item-category">${item.category || ''}</div>
           </div>
         </div>
-        <div>${location}</div>
-        <div>${dateStr}</div>
-        <div class="status-badge-container">${statusHtml}</div>
-        <div>${typeBadge}</div>
+        <div class="dash-col-location">${location}</div>
+        <div class="dash-col-date">${dateStr}</div>
+        <div class="status-badge-container dash-col-status">${statusHtml}</div>
+        <div class="dash-col-type">${typeBadge}</div>
+        <div class="mob-dash-badges">${statusHtml}${typeBadge}</div>
+        <div class="mob-dash-meta">${location ? `<span>📍 ${location}</span>` : ''}${dateStr ? `<span>📅 ${dateStr}</span>` : ''}</div>
       </div>`;
   }).join('');
 
@@ -1121,8 +1123,8 @@ function displayItemsWithActions(items, container) {
           <div class="item-category">${item.category || ''}</div>
         </div>
       </div>
-      <div>${item.location || ''}</div>
-      <div>${formatDate(item.date)}</div>
+      <div class="item-location">${item.location || ''}</div>
+      <div class="item-date">${formatDate(item.date)}</div>
       <div class="status-dropdown-container">
         ${statusDropdown(item.status)}
       </div>

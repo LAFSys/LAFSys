@@ -625,56 +625,259 @@
                 padding-top: 3.5rem !important;
             }
             /* Per-section min-widths so each table scrolls at the right width */
-            #section-items .table-header,
-            #section-items .table-row,
             #section-dashboard .table-header,
             #section-dashboard .table-row,
             #section-users .table-header,
             #section-users .table-row { min-width: 560px; }
-            #section-lost-items .table-header,
-            #section-lost-items .table-row { min-width: 730px; }
         }
 
+        /* Desktop: hide mobile-only dashboard row elements */
+        .mob-dash-badges, .mob-dash-meta { display: none; }
+
         @media (max-width: 768px) {
+            /* ── Stats cards: compact 2-col ── */
             .stats-grid {
                 grid-template-columns: repeat(2, 1fr);
-                gap: 0.75rem;
-                padding: 0.25rem;
+                gap: 0.6rem !important;
+                padding: 0;
             }
             .stat-card {
-                min-height: 120px;
-                padding: 1rem 1.25rem;
+                min-height: 0 !important;
+                padding: 0.85rem 1rem !important;
+                border-radius: 10px !important;
             }
-            .stat-value {
-                font-size: 2rem;
-            }
-            .stat-label {
-                font-size: 0.9rem;
-            }
+            .stat-card:hover { transform: none !important; }
+            .stat-value { font-size: 1.8rem !important; margin: 0.3rem 0 !important; }
+            .stat-label { font-size: 0.72rem !important; gap: 0.3rem !important; }
+            .stat-label i { width: 14px !important; height: 14px !important; }
+            .stat-delta { font-size: 0.65rem !important; margin-top: 0.25rem !important; padding: 0.15rem 0.45rem !important; }
+
             .main-content {
                 padding: 3.5rem 0.75rem 1rem !important;
             }
-            /* Horizontal scroll — preserve each section's column definition */
+
+            /* ── Dashboard recent items: card list (no horizontal scroll) ── */
+            #section-dashboard .items-table {
+                box-shadow: none !important;
+                background: transparent !important;
+                border-radius: 0 !important;
+            }
+            #section-dashboard .table-header { display: none !important; }
+            #section-dashboard .table-row {
+                display: flex !important;
+                flex-direction: column !important;
+                min-width: 0 !important;
+                padding: 0.75rem 0 !important;
+                gap: 0.4rem !important;
+                border-bottom: 1px solid #e5e7eb !important;
+                background: white !important;
+                border-radius: 0 !important;
+                box-shadow: none !important;
+                margin: 0 !important;
+            }
+            #section-dashboard .table-row:first-child { border-top: 1px solid #e5e7eb !important; }
+
+            /* Image row: thumbnail + name + category */
+            #section-dashboard .item-info {
+                display: flex !important;
+                align-items: center !important;
+                gap: 0.75rem !important;
+                padding: 0 0.75rem !important;
+            }
+            #section-dashboard .item-image {
+                width: 44px !important;
+                height: 44px !important;
+                object-fit: cover !important;
+                border-radius: 8px !important;
+                flex-shrink: 0 !important;
+            }
+            #section-dashboard .item-name { font-size: 0.9rem !important; font-weight: 600 !important; }
+            #section-dashboard .item-category { font-size: 0.72rem !important; color: #64748b !important; }
+
+            /* Badges row (status + type) */
+            .mob-dash-badges {
+                display: flex !important;
+                gap: 0.4rem !important;
+                align-items: center !important;
+                padding: 0 0.75rem !important;
+            }
+            .mob-dash-badges .status-badge { font-size: 0.68rem !important; padding: 2px 8px !important; }
+
+            /* Meta row (location + date) */
+            .mob-dash-meta {
+                display: flex !important;
+                gap: 0.75rem !important;
+                padding: 0 0.75rem !important;
+                font-size: 0.72rem !important;
+                color: #64748b !important;
+            }
+
+            /* Hide desktop-only cells in the dashboard table */
+            #section-dashboard .dash-col-location,
+            #section-dashboard .dash-col-date,
+            #section-dashboard .dash-col-status,
+            #section-dashboard .dash-col-type { display: none !important; }
+
+            /* ── Other sections: horizontal scroll ── */
             .table-header, .table-row {
                 gap: 0 !important;
                 padding: 0.75rem 1rem !important;
                 position: static !important;
             }
-            #section-items .table-header,
-            #section-items .table-row { min-width: 560px !important; }
-            #section-lost-items .table-header,
-            #section-lost-items .table-row { min-width: 730px !important; }
+            /* ── Lost Items: card layout (no horizontal scroll) ── */
+            #section-lost-items .items-table {
+                box-shadow: none !important;
+                background: transparent !important;
+                border-radius: 0 !important;
+            }
+            #section-lost-items .table-header { display: none !important; }
+            #section-lost-items .table-row {
+                display: grid !important;
+                grid-template-columns: 1fr auto !important;
+                min-width: 0 !important;
+                padding: 0.85rem !important;
+                border-radius: 10px !important;
+                background: white !important;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.09) !important;
+                margin-bottom: 0.55rem !important;
+                border-bottom: none !important;
+                border-left: none !important;
+                gap: 0.25rem 0.5rem !important;
+            }
+            #section-lost-items .table-row:hover {
+                background: #f8fafc !important;
+                border-left: none !important;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.12) !important;
+            }
+            /* Row 1: image + name (full width) */
+            #section-lost-items .li-name {
+                grid-column: 1 / -1 !important;
+                margin-bottom: 0.2rem !important;
+            }
+            #section-lost-items .li-name img,
+            #section-lost-items .li-name > div:first-child {
+                width: 44px !important; height: 44px !important;
+                border-radius: 8px !important; flex-shrink: 0 !important;
+            }
+            /* Row 2: category (left) + location (right) */
+            #section-lost-items .li-cat {
+                grid-column: 1 !important;
+                font-size: 0.78rem !important;
+                align-self: center !important;
+            }
+            #section-lost-items .li-loc {
+                grid-column: 2 !important;
+                font-size: 0.78rem !important;
+                text-align: right !important;
+                align-self: center !important;
+            }
+            /* Row 3: date (left) + posted by (right) */
+            #section-lost-items .li-date {
+                grid-column: 1 !important;
+                font-size: 0.78rem !important;
+                align-self: center !important;
+            }
+            #section-lost-items .li-user {
+                grid-column: 2 !important;
+                font-size: 0.78rem !important;
+                text-align: right !important;
+                align-self: center !important;
+                white-space: nowrap !important;
+                overflow: hidden !important;
+                text-overflow: ellipsis !important;
+                max-width: 130px !important;
+            }
+            /* Row 4: status (left) + actions (right) */
+            #section-lost-items .li-status {
+                grid-column: 1 !important;
+                align-self: center !important;
+            }
+            #section-lost-items .action-buttons {
+                grid-column: 2 !important;
+                justify-content: flex-end !important;
+                position: static !important;
+            }
             #section-users .table-header,
             #section-users .table-row { min-width: 560px !important; }
             .table-row::before { display: none !important; }
             .action-buttons   { position: static !important; }
-            /* Lost Items header: stack heading and filter on narrow screens */
             .lost-items-filter-bar {
                 flex-direction: column !important;
                 align-items: flex-start !important;
                 gap: 0.6rem !important;
             }
             .lost-items-filter-bar select { width: 100%; }
+
+            /* ── Found Items: card layout (no horizontal scroll) ── */
+            #section-items .items-table {
+                box-shadow: none !important;
+                background: transparent !important;
+                border-radius: 0 !important;
+            }
+            #section-items .table-header { display: none !important; }
+            #section-items .table-row {
+                display: grid !important;
+                grid-template-columns: 1fr auto !important;
+                grid-template-rows: auto auto auto !important;
+                min-width: 0 !important;
+                padding: 0.85rem !important;
+                border-radius: 10px !important;
+                background: white !important;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.09) !important;
+                margin-bottom: 0.55rem !important;
+                border-bottom: none !important;
+                border-left: none !important;
+                gap: 0.3rem 0.5rem !important;
+            }
+            #section-items .table-row:hover {
+                background: #f8fafc !important;
+                border-left: none !important;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.12) !important;
+            }
+            #section-items .item-info {
+                grid-column: 1 / -1 !important;
+                display: flex !important;
+                align-items: center !important;
+                gap: 0.65rem !important;
+                margin-bottom: 0.2rem !important;
+            }
+            #section-items .item-image {
+                width: 44px !important;
+                height: 44px !important;
+                object-fit: cover !important;
+                border-radius: 8px !important;
+                flex-shrink: 0 !important;
+            }
+            #section-items .item-name { font-size: 0.9rem !important; font-weight: 600 !important; }
+            #section-items .item-category { font-size: 0.72rem !important; color: #64748b !important; }
+            #section-items .item-location {
+                grid-column: 1 !important;
+                font-size: 0.78rem !important;
+                color: #64748b !important;
+                align-self: center !important;
+            }
+            #section-items .item-date {
+                grid-column: 2 !important;
+                font-size: 0.78rem !important;
+                color: #64748b !important;
+                text-align: right !important;
+                align-self: center !important;
+            }
+            #section-items .status-dropdown-container {
+                grid-column: 1 !important;
+                align-self: center !important;
+            }
+            #section-items .status-select {
+                font-size: 0.8rem !important;
+                padding: 0.3rem 0.5rem !important;
+            }
+            #section-items .action-buttons {
+                grid-column: 2 !important;
+                display: flex !important;
+                justify-content: flex-end !important;
+                align-self: center !important;
+                position: static !important;
+            }
         }
 
         @media (max-width: 480px) {
@@ -920,41 +1123,19 @@
 
             <!-- Items Section -->
             <section id="section-items" class="section-view" style="display:none;">
-                <div style="text-align: center; margin-bottom: 2rem;">
-                    <div class="search-container" style="display: inline-flex; align-items: center; max-width: 600px; width: 90%; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08); border-radius: 50px; overflow: hidden;">
-                        <div style="display: flex; align-items: center; justify-content: center; background-color: #f0f5ff; padding: 0 15px; border-radius: 50px 0 0 50px; min-width: 56px;">
-                            <i data-lucide="search" width="24" height="24" style="color: #1a2e6b;"></i>
-                        </div>
-                        <input type="text" id="itemSearchInput" placeholder="Search items..." class="search-input" style="padding: 0.75rem 1rem; border: 2px solid #f0f5ff; border-left: none; flex: 1; outline: none; font-size: 1rem; min-width: 0;">
-                        <button id="itemSearchButton" class="btn-primary" style="border-radius: 0 50px 50px 0; padding: 0.75rem 1.5rem; font-weight: 600; display: flex; align-items: center;">
-                            <span class="search-button-text">Search</span>
+                <div style="margin-bottom: 1.5rem;">
+                    <div style="display:flex; align-items:center; background:#fff; border:1px solid #e2e8f0; border-radius:8px; overflow:hidden; width:100%; box-shadow:0 1px 3px rgba(0,0,0,0.07);">
+                        <input type="text" id="itemSearchInput" placeholder="Search items..." class="search-input"
+                               style="flex:1; background:transparent; border:none; outline:none; padding:0.75rem 1rem; color:#1e293b; font-size:1rem; min-width:0;">
+                        <button id="itemSearchButton"
+                                style="background:#f07316; border:none; cursor:pointer; padding:0.75rem 1rem; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                            <i data-lucide="search" width="20" height="20" style="color:#fff;"></i>
                         </button>
                     </div>
                 </div>
-                
                 <style>
-                    @media (max-width: 600px) {
-                        .search-container {
-                            width: 95% !important;
-                        }
-                        
-                        #itemSearchButton {
-                            padding: 0.75rem 1rem !important;
-                        }
-                        
-                        .search-button-text {
-                            display: none;
-                        }
-                        
-                        #itemSearchButton::after {
-                            content: '🔍';
-                            font-size: 16px;
-                        }
-                        
-                        #itemSearchInput {
-                            padding: 0.75rem 0.5rem !important;
-                        }
-                    }
+                    #itemSearchInput::placeholder { color: #94a3b8; }
+                    #itemSearchButton:hover { background: #d96210 !important; }
                 </style>
                 <div class="items-table">
                     <div class="table-header">
@@ -1003,12 +1184,12 @@
                     <div class="item-modal-close" onclick="document.getElementById('lostItemAdminModal').style.display='none'">×</div>
                     <div class="item-modal-body">
                         <div class="item-modal-image-col">
-                            <img id="liamImage" src="" alt="" style="max-width:100%; max-height:400px; object-fit:contain; display:none; border-radius:6px;">
+                            <img id="liamImage" src="" alt="" style="max-width:100%; object-fit:contain; display:none; border-radius:6px; cursor:zoom-in;" onclick="var lb=document.getElementById('adminImgLightbox');document.getElementById('adminImgLightboxImg').src=this.src;lb.style.display='flex'">
                             <div id="liamNoImg" style="width:100%; height:220px; display:flex; align-items:center; justify-content:center; font-size:4rem; color:#94a3b8; background:#f8fafc; border-radius:8px;">🔍</div>
                         </div>
                         <div class="item-modal-details-col">
                             <div class="item-modal-header">
-                                <h2 id="liamTitle" style="font-size:1.75rem; font-weight:700; margin:0 0 0.5rem; color:#0f172a;"></h2>
+                                <h2 id="liamTitle" style="font-weight:700; margin:0 0 0.5rem; color:#0f172a;"></h2>
                                 <span id="liamTypeBadge" class="item-status-badge" style="background:#fef3c7; color:#b45309; display:inline-block;">LOST</span>
                             </div>
                             <div class="item-detail-section">
@@ -1127,6 +1308,12 @@
     <script src="js/admin-chat-scroll-fix.js"></script>
     <script src="js/admin-search.js"></script>
     <script src="js/inbox-reset.js"></script>
+
+    <!-- ── Image Lightbox ── -->
+    <div id="adminImgLightbox" onclick="this.style.display='none'" style="display:none;position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.88);align-items:center;justify-content:center;cursor:zoom-out;">
+        <button onclick="document.getElementById('adminImgLightbox').style.display='none'" style="position:absolute;top:1rem;right:1rem;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:1.4rem;width:36px;height:36px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;">×</button>
+        <img id="adminImgLightboxImg" src="" alt="" style="max-width:92vw;max-height:88vh;object-fit:contain;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.5);">
+    </div>
 
     <!-- ── Decline Reason Popup ── -->
     <div id="liamDeclinePanel" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;" onclick="if(event.target===this)window._lostItemAdminHideDecline()">
