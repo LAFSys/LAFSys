@@ -1055,19 +1055,20 @@ function displayReadOnlyRecentItems(items, container) {
 
     return `
       <div class="table-row read-only-row" data-id="${item.id}" data-status="${item.status || ''}" data-type="${item._type || 'found'}">
-        <div class="item-info">
-          <img src="${imgSrc}" alt="${item.title || ''}" class="item-image" onerror="this.src='https://via.placeholder.com/400x300?text=No+Image'">
-          <div>
-            <div class="item-name">${item.title || '—'}</div>
-            <div class="item-category">${item.category || ''}</div>
+        <div class="item-info" style="display:flex;align-items:center;gap:0.75rem;padding:0.6rem 1rem;">
+          <img src="${imgSrc}" alt="${item.title || ''}" class="item-image" onerror="this.src='https://via.placeholder.com/400x300?text=No+Image'" style="width:52px;height:52px;object-fit:cover;border-radius:8px;flex-shrink:0;">
+          <div class="item-text-col" style="flex:1;min-width:0;display:grid;grid-template-columns:1fr auto;column-gap:0.4rem;row-gap:0.15rem;align-items:center;">
+            <div class="item-name" style="grid-column:1;grid-row:1;">${item.title || '—'}</div>
+            <div class="mob-dash-badges" style="grid-column:2;grid-row:1;gap:0.3rem;align-items:center;justify-content:flex-end;">${statusHtml}${typeBadge}</div>
+            <div class="item-category" style="grid-column:1/3;grid-row:2;">${item.category || ''}</div>
+            <div class="item-date-mob" style="grid-column:1/3;grid-row:3;">${dateStr}</div>
+            ${location ? `<div class="mob-dash-meta" style="grid-column:1/3;grid-row:4;"><span>📍 ${location}</span></div>` : ''}
           </div>
         </div>
         <div class="dash-col-location">${location}</div>
         <div class="dash-col-date">${dateStr}</div>
         <div class="status-badge-container dash-col-status">${statusHtml}</div>
         <div class="dash-col-type">${typeBadge}</div>
-        <div class="mob-dash-badges">${statusHtml}${typeBadge}</div>
-        <div class="mob-dash-meta">${location ? `<span>📍 ${location}</span>` : ''}${dateStr ? `<span>📅 ${dateStr}</span>` : ''}</div>
       </div>`;
   }).join('');
 

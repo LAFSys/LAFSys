@@ -2286,8 +2286,7 @@
                     _fimImg.style.cursor = 'zoom-in';
                     _fimImg.onclick = function() {
                         var src = this.src;
-                        alert('CLICK FIRED! src=' + (src||'').substring(0,60));
-                        if (src && src.indexOf('http') !== -1) {
+                        if (src && src.length > 4) {
                             // inline lightbox — no external dependency
                             var old2 = document.getElementById('_dynLb');
                             if (old2) old2.remove();
@@ -3511,7 +3510,7 @@
     <script>
     (function() {
         function openLightbox(src) {
-            if (!src || src.indexOf('http') === -1) return;
+            if (!src || src.length < 5) return;
             var old = document.getElementById('_dynLb');
             if (old) old.remove();
             var ov = document.createElement('div');

@@ -37,30 +37,40 @@
                 const row       = document.createElement('div');
                 row.className   = 'table-row';
                 row.style.gridTemplateColumns = '2fr 1fr 2fr 1fr 140px';
+                const statusBg  = isPending ? '#fef9c3' : isDeclined ? '#fef2f2' : '#dcfce7';
+                const statusClr = isPending ? '#92400e' : isDeclined ? '#dc2626' : '#166534';
+                const statusLbl = isPending ? 'Pending' : isDeclined ? 'Declined' : 'Active';
+                const actionBtns = isPending
+                    ? `<button data-uid="${d.id}" class="approve-btn" style="padding:5px 12px;background:#1a2e6b;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.8rem;font-weight:600;">Approve</button>
+                       <button data-uid="${d.id}" class="decline-btn" style="padding:5px 12px;background:white;color:#dc2626;border:1px solid #fca5a5;border-radius:6px;cursor:pointer;font-size:0.8rem;font-weight:600;">Decline</button>`
+                    : isDeclined
+                    ? `<button data-uid="${d.id}" data-name="${(d.name||'').replace(/"/g,'&quot;')}" class="delete-user-btn" style="padding:5px 12px;background:#fef2f2;color:#dc2626;border:1px solid #fca5a5;border-radius:6px;cursor:pointer;font-size:0.8rem;font-weight:600;">Delete</button>`
+                    : '<span style="color:#94a3b8;font-size:0.8rem;">—</span>';
                 row.innerHTML = `
-                    <div style="display:flex;align-items:center;gap:0.6rem;">
+                    <!-- Mobile card (hidden on desktop, shown on mobile via CSS) -->
+                    <div class="user-mob-card" style="align-items:flex-start;gap:0.65rem;padding:0.65rem 0.75rem;">
+                        <div style="width:40px;height:40px;border-radius:50%;background:#1a2e6b;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.9rem;flex-shrink:0;">${initial}</div>
+                        <div style="flex:1;min-width:0;">
+                            <div style="display:flex;align-items:center;justify-content:space-between;gap:0.4rem;">
+                                <span style="font-weight:600;font-size:0.9rem;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${d.name || '—'}</span>
+                                <span style="padding:2px 9px;border-radius:9999px;font-size:0.68rem;font-weight:700;flex-shrink:0;background:${statusBg};color:${statusClr};">${statusLbl}</span>
+                            </div>
+                            <div style="font-size:0.75rem;color:#64748b;margin-top:0.15rem;">Admin</div>
+                            <div style="font-size:0.75rem;color:#64748b;margin-top:0.1rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${d.email || '—'}</div>
+                            ${isPending || isDeclined ? `<div style="display:flex;gap:6px;margin-top:0.5rem;">${actionBtns}</div>` : ''}
+                        </div>
+                    </div>
+                    <!-- Desktop columns (hidden on mobile via CSS) -->
+                    <div class="user-col-name" style="display:flex;align-items:center;gap:0.6rem;">
                         <div style="width:32px;height:32px;border-radius:50%;background:#1a2e6b;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.8rem;flex-shrink:0;">${initial}</div>
                         <span style="font-weight:500;">${d.name || '—'}</span>
                     </div>
-                    <div>Admin</div>
-                    <div style="color:#64748b;font-size:0.875rem;">${d.email || '—'}</div>
-                    <div>
-                        <span style="padding:3px 10px;border-radius:9999px;font-size:0.72rem;font-weight:700;letter-spacing:0.03em;
-                            background:${isPending ? '#fef9c3' : isDeclined ? '#fef2f2' : '#dcfce7'};
-                            color:${isPending ? '#92400e' : isDeclined ? '#dc2626' : '#166534'};">
-                            ${isPending ? 'Pending' : isDeclined ? 'Declined' : 'Active'}
-                        </span>
+                    <div class="user-col-role">Admin</div>
+                    <div class="user-col-email" style="color:#64748b;font-size:0.875rem;">${d.email || '—'}</div>
+                    <div class="user-col-status">
+                        <span style="padding:3px 10px;border-radius:9999px;font-size:0.72rem;font-weight:700;letter-spacing:0.03em;background:${statusBg};color:${statusClr};">${statusLbl}</span>
                     </div>
-                    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-                        ${isPending
-                            ? `<button data-uid="${d.id}" class="approve-btn" style="padding:5px 12px;background:#1a2e6b;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.8rem;font-weight:600;">Approve</button>
-                               <button data-uid="${d.id}" class="decline-btn" style="padding:5px 12px;background:white;color:#dc2626;border:1px solid #fca5a5;border-radius:6px;cursor:pointer;font-size:0.8rem;font-weight:600;">Decline</button>`
-                            : isDeclined
-                            ? `<button data-uid="${d.id}" data-name="${(d.name||'').replace(/"/g,'&quot;')}" class="delete-user-btn" style="padding:5px 12px;background:#fef2f2;color:#dc2626;border:1px solid #fca5a5;border-radius:6px;cursor:pointer;font-size:0.8rem;font-weight:600;">Delete</button>`
-                            : '<span style="color:#94a3b8;font-size:0.8rem;">—</span>'
-                        }
-                    </div>
-
+                    <div class="user-col-actions" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">${actionBtns}</div>
                 `;
                 tbody.appendChild(row);
             });

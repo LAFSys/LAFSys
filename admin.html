@@ -626,13 +626,14 @@
             }
             /* Per-section min-widths so each table scrolls at the right width */
             #section-dashboard .table-header,
-            #section-dashboard .table-row,
-            #section-users .table-header,
-            #section-users .table-row { min-width: 560px; }
+            #section-dashboard .table-row { min-width: 560px; }
         }
 
         /* Desktop: hide mobile-only dashboard row elements */
-        .mob-dash-badges, .mob-dash-meta { display: none; }
+        .mob-dash-badges, .mob-dash-meta, .item-date-mob { display: none !important; }
+        .item-title-row { display: contents; }
+        /* Desktop: hide mobile-only user card */
+        .user-mob-card { display: none !important; }
 
         @media (max-width: 768px) {
             /* ── Stats cards: compact 2-col ── */
@@ -661,14 +662,14 @@
                 box-shadow: none !important;
                 background: transparent !important;
                 border-radius: 0 !important;
+                overflow: visible !important;
             }
             #section-dashboard .table-header { display: none !important; }
             #section-dashboard .table-row {
-                display: flex !important;
-                flex-direction: column !important;
+                display: block !important;
                 min-width: 0 !important;
-                padding: 0.75rem 0 !important;
-                gap: 0.4rem !important;
+                width: 100% !important;
+                padding: 0 !important;
                 border-bottom: 1px solid #e5e7eb !important;
                 background: white !important;
                 border-radius: 0 !important;
@@ -677,39 +678,83 @@
             }
             #section-dashboard .table-row:first-child { border-top: 1px solid #e5e7eb !important; }
 
-            /* Image row: thumbnail + name + category */
+            /* Chat-style card: image left, title+date top row, details below */
             #section-dashboard .item-info {
                 display: flex !important;
-                align-items: center !important;
+                align-items: flex-start !important;
                 gap: 0.75rem !important;
-                padding: 0 0.75rem !important;
+                padding: 0.65rem 0.75rem !important;
             }
             #section-dashboard .item-image {
-                width: 44px !important;
-                height: 44px !important;
+                width: 54px !important;
+                height: 54px !important;
                 object-fit: cover !important;
                 border-radius: 8px !important;
                 flex-shrink: 0 !important;
             }
-            #section-dashboard .item-name { font-size: 0.9rem !important; font-weight: 600 !important; }
-            #section-dashboard .item-category { font-size: 0.72rem !important; color: #64748b !important; }
-
-            /* Badges row (status + type) */
-            .mob-dash-badges {
-                display: flex !important;
-                gap: 0.4rem !important;
+            /* Grid: col1=name/details, col2=date pinned to right */
+            .item-text-col {
+                flex: 1 !important;
+                min-width: 0 !important;
+                display: grid !important;
+                grid-template-columns: 1fr auto !important;
+                row-gap: 0.15rem !important;
+                column-gap: 0.4rem !important;
                 align-items: center !important;
-                padding: 0 0.75rem !important;
             }
-            .mob-dash-badges .status-badge { font-size: 0.68rem !important; padding: 2px 8px !important; }
-
-            /* Meta row (location + date) */
-            .mob-dash-meta {
-                display: flex !important;
-                gap: 0.75rem !important;
-                padding: 0 0.75rem !important;
+            /* row 1: name (col1) + date (col2) */
+            #section-dashboard .item-name {
+                grid-column: 1 !important;
+                grid-row: 1 !important;
+                font-size: 0.9rem !important;
+                font-weight: 600 !important;
+                color: #1e293b !important;
+                overflow: hidden !important;
+                text-overflow: ellipsis !important;
+                white-space: nowrap !important;
+            }
+            .item-date-mob {
+                display: block !important;
+                grid-column: 2 !important;
+                grid-row: 1 !important;
+                font-size: 0.68rem !important;
+                color: #94a3b8 !important;
+                white-space: nowrap !important;
+                text-align: right !important;
+            }
+            /* rows 2-4: span both columns */
+            #section-dashboard .item-category {
+                grid-column: 1 / 3 !important;
+                grid-row: 2 !important;
                 font-size: 0.72rem !important;
                 color: #64748b !important;
+            }
+            #section-dashboard .item-category { font-size: 0.72rem !important; color: #64748b !important; }
+
+            /* Status badges — shown on mobile (grid placement via inline style) */
+            .mob-dash-badges {
+                display: flex !important;
+                gap: 0.3rem !important;
+                align-items: center !important;
+                justify-content: flex-end !important;
+                padding: 0 !important;
+            }
+            .mob-dash-badges .status-badge { font-size: 0.65rem !important; padding: 2px 7px !important; }
+
+            /* Location — shown on mobile (grid placement via inline style) */
+            .mob-dash-meta {
+                display: flex !important;
+                gap: 0.5rem !important;
+                padding: 0 !important;
+                font-size: 0.7rem !important;
+                color: #64748b !important;
+            }
+
+            /* Date — shown on mobile */
+            .item-date-mob {
+                display: block !important;
+                font-size: 0.68rem !important;
+                color: #94a3b8 !important;
             }
 
             /* Hide desktop-only cells in the dashboard table */
@@ -797,8 +842,25 @@
                 justify-content: flex-end !important;
                 position: static !important;
             }
-            #section-users .table-header,
-            #section-users .table-row { min-width: 560px !important; }
+            #section-users .items-table { overflow: visible !important; }
+            #section-users .table-header { display: none !important; }
+            #section-users .table-row {
+                display: block !important;
+                min-width: 0 !important;
+                width: 100% !important;
+                padding: 0 !important;
+                border-bottom: 1px solid #e5e7eb !important;
+                background: white !important;
+                border-radius: 0 !important;
+                box-shadow: none !important;
+                margin: 0 !important;
+            }
+            #section-users .user-mob-card { display: flex !important; }
+            #section-users .user-col-name,
+            #section-users .user-col-role,
+            #section-users .user-col-email,
+            #section-users .user-col-status,
+            #section-users .user-col-actions { display: none !important; }
             .table-row::before { display: none !important; }
             .action-buttons   { position: static !important; }
             .lost-items-filter-bar {
@@ -1293,14 +1355,14 @@
     <!-- App Scripts -->
     <script src="js/cloudVision.js"></script>
     <script src="js/data.js"></script>
-    <script src="js/users.js"></script>
+    <script src="js/users.js?v=2.0"></script>
     <script src="js/messages.js"></script>
     <script src="js/clear-messages.js"></script>
     <script src="js/firebase-messages.js"></script>
     <script src="js/firebase-data.js"></script>
     <script src="js/item-init.js"></script>
     <!-- Admin dashboard script (completely rewritten) -->
-    <script src="js/admin.js"></script>
+    <script src="js/admin.js?v=7.0"></script>
     <!-- Modal popup for item details -->
     <script src="js/admin-modal.js"></script>
     <!-- Live chat inbox functionality -->
