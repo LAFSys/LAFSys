@@ -174,15 +174,15 @@
         /* Tablets (medium) */
         @media (min-width: 768px) {
             .stats-grid {
-                grid-template-columns: repeat(4, 1fr);
-                gap: 1.5rem;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 1rem;
             }
         }
         
         /* Large screens */
         @media (min-width: 1024px) {
             .stats-grid {
-                grid-template-columns: repeat(4, 1fr);
+                grid-template-columns: repeat(5, 1fr);
                 width: 100%;
                 margin-left: 0;
                 margin-right: 0;
@@ -302,9 +302,10 @@
             transition: background-color 0.2s;
         }
         
-        /* Complete removal of all action buttons in Dashboard section */
+        /* Complete removal of all action buttons in Dashboard section.
+           .pager-btn is exempt — the pagination controls live in this section too. */
         #section-dashboard .action-buttons,
-        #section-dashboard button,
+        #section-dashboard button:not(.pager-btn),
         #section-dashboard .btn-icon,
         #section-dashboard [data-action="edit"],
         #section-dashboard [data-action="delete"],
@@ -627,6 +628,8 @@
             /* Per-section min-widths so each table scrolls at the right width */
             #section-dashboard .table-header,
             #section-dashboard .table-row { min-width: 560px; }
+            #section-archived .table-header,
+            #section-archived .table-row { min-width: 760px; }
         }
 
         /* Desktop: hide mobile-only dashboard row elements */
@@ -1006,7 +1009,74 @@
                 box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
             }
         }
+        /* Pagination — shared by every admin list section */
+        .table-pager {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            margin: 0.85rem 0 0.25rem;
+        }
+
+        .table-pager:empty { display: none; }
+
+        .pager-info {
+            font-size: 0.82rem;
+            color: #64748b;
+        }
+
+        .pager-controls {
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+            flex-wrap: wrap;
+        }
+
+        .pager-btn {
+            min-width: 34px;
+            padding: 0.35rem 0.6rem;
+            background: #fff;
+            color: #1e293b;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.15s, border-color 0.15s;
+        }
+
+        .pager-btn:hover:not(:disabled):not(.active) {
+            background: #f1f5f9;
+            border-color: #cbd5e1;
+        }
+
+        .pager-btn.active {
+            background: #1a2e6b;
+            border-color: #1a2e6b;
+            color: #fff;
+            cursor: default;
+        }
+
+        .pager-btn:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+
+        .pager-gap {
+            color: #94a3b8;
+            padding: 0 0.15rem;
+        }
+
+        @media (max-width: 600px) {
+            .table-pager {
+                justify-content: center;
+                text-align: center;
+            }
+            .pager-info { width: 100%; }
+        }
     </style>
+
 </head>
 <body>
     <button id="adminSidebarToggle" aria-label="Open menu">&#9776;</button>
@@ -1052,6 +1122,12 @@
                             <span style="position:relative;">Lost Items
                                 <span id="pendingLostBadge" class="notification-badge" style="display:none;">0</span>
                             </span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#" class="nav-link" data-section="archived">
+                            <i data-lucide="archive"></i>
+                            Archived
                         </a>
                     </li>
                     <li class="nav-item">
@@ -1117,7 +1193,16 @@
                         <div class="stat-value" id="statClaimed">0</div>
                         <div class="stat-delta" id="deltaClaimed"></div>
                     </div>
+                    <div class="stat-card" data-filter="archived" id="archivedStatCard">
+                        <div class="stat-label">
+                            <i data-lucide="archive" width="16" height="16"></i>
+                            Archived Items
+                        </div>
+                        <div class="stat-value" id="statArchived">0</div>
+                        <div class="stat-delta" id="deltaArchived"></div>
+                    </div>
                 </div>
+
 
                 <!-- Recent Items -->
                 <h2 id="recentItemsHeading" style="margin: 2rem 0 1rem;">Recent Items</h2>
@@ -1234,6 +1319,35 @@
                         <div>Actions</div>
                     </div>
                     <div id="lostItemsAdminContainer">
+                        <div style="text-align:center; padding:2rem; color:#6b7280;">Loading…</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Archived Items Section -->
+            <section id="section-archived" class="section-view" style="display:none;">
+                <div class="archived-filter-bar" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+                    <h2 style="margin:0;">Archived Items</h2>
+                    <select id="archivedTypeFilter" style="padding:0.45rem 0.75rem; border:1px solid #e2e8f0; border-radius:6px; font-size:0.9rem; cursor:pointer;">
+                        <option value="all">All Types</option>
+                        <option value="found">Found Items</option>
+                        <option value="lost">Lost Reports</option>
+                    </select>
+                </div>
+                <p style="margin:0 0 1.25rem; color:#64748b; font-size:0.88rem; max-width:70ch;">
+                    Deleted records are kept here instead of being erased. They are left out of the dashboard counts and hidden from users. Restoring one makes it active again.
+                </p>
+                <div class="items-table">
+                    <div class="table-header" style="grid-template-columns: 2fr 1fr 1.5fr 1fr 1.4fr 100px 110px;">
+                        <div>Item</div>
+                        <div>Category</div>
+                        <div>Location</div>
+                        <div>Date</div>
+                        <div>Archived By</div>
+                        <div>Type</div>
+                        <div>Actions</div>
+                    </div>
+                    <div id="archivedItemsContainer">
                         <div style="text-align:center; padding:2rem; color:#6b7280;">Loading…</div>
                     </div>
                 </div>

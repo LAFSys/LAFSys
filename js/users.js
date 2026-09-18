@@ -15,6 +15,7 @@
         try {
             const snap = await db.collection('users').where('role', '==', 'admin').get();
             if (snap.empty) {
+                window.clearPager?.(tbody);
                 tbody.innerHTML = '<div style="padding:1rem;color:#64748b;text-align:center;">No admin accounts found.</div>';
                 return;
             }
@@ -28,9 +29,13 @@
                 if (ao !== bo) return ao - bo;
                 return (a.name || '').localeCompare(b.name || '');
             });
-
             tbody.innerHTML = '';
-            docs.forEach(d => {
+            // Shared pager from admin.js (this file is its own IIFE)
+            const pageDocs = window.applyPagination
+                ? window.applyPagination('users', docs, tbody, loadAndRenderUsers)
+                : docs;
+            pageDocs.forEach(d => {
+
                 const isPending  = d.status === 'pending';
                 const isDeclined = d.status === 'declined';
                 const initial   = (d.name || '?')[0].toUpperCase();

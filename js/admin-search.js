@@ -62,84 +62,19 @@ function setupItemSearch() {
 function performSearch() {
     const searchInput = document.getElementById('itemSearchInput');
     if (!searchInput) return;
-    
-    const query = searchInput.value.trim().toLowerCase();
-    if (query === '') {
-        resetItemsDisplay();
-        return;
-    }
-    
-    // Find all item rows in the container
-    const itemRows = document.querySelectorAll('#allItemsContainer .table-row');
-    let matchCount = 0;
-    
-    // Loop through each item and check for matches
-    itemRows.forEach(row => {
-        const itemName = row.querySelector('.item-name')?.textContent?.toLowerCase() || '';
-        const itemCategory = row.querySelector('.item-category')?.textContent?.toLowerCase() || '';
-        const itemLocation = row.querySelector('div:nth-child(2)')?.textContent?.toLowerCase() || '';
-        
-        // Check if any field matches the search query
-        if (itemName.includes(query) || 
-            itemCategory.includes(query) || 
-            itemLocation.includes(query)) {
-            row.style.display = ''; // Show matching row
-            matchCount++;
-            
-            // Highlight the matching text
-            highlightMatches(row, query);
-        } else {
-            row.style.display = 'none'; // Hide non-matching row
-        }
-    });
-    
-    // Show message if no results found
-    const container = document.getElementById('allItemsContainer');
-    if (container && matchCount === 0) {
-        // Check if we already have a no-results message
-        let noResultsMsg = container.querySelector('.no-results-message');
-        
-        if (!noResultsMsg) {
-            noResultsMsg = document.createElement('div');
-            noResultsMsg.className = 'table-row no-results-message';
-            noResultsMsg.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 2rem;">
-                No items found matching "${query}" <button id="clearSearchBtn" class="btn-primary" style="margin-left: 1rem; padding: 0.25rem 0.5rem;">Clear Search</button>
-            </div>`;
-            container.appendChild(noResultsMsg);
-            
-            // Add event listener to clear search button
-            document.getElementById('clearSearchBtn').addEventListener('click', function() {
-                searchInput.value = '';
-                resetItemsDisplay();
-            });
-        }
-    } else if (container) {
-        // Remove any existing no-results message
-        const noResultsMsg = container.querySelector('.no-results-message');
-        if (noResultsMsg) {
-            noResultsMsg.remove();
-        }
-    }
+
+    // The items list is paginated, so hiding rows in the DOM would only ever
+    // search the page on screen — admin.js re-renders from the full dataset.
+    window._setItemsSearchQuery?.(searchInput.value.trim());
 }
 
 /**
  * Reset display to show all items
  */
 function resetItemsDisplay() {
-    // Show all item rows
-    const itemRows = document.querySelectorAll('#allItemsContainer .table-row');
-    itemRows.forEach(row => {
-        row.style.display = '';
-        
-        // Remove any highlights
-        removeHighlights(row);
-    });
-    
-    // Remove no-results message if it exists
-    const noResultsMsg = document.querySelector('#allItemsContainer .no-results-message');
-    if (noResultsMsg) {
-        noResultsMsg.remove();
-    }
+    const searchInput = document.getElementById('itemSearchInput');
+    if (searchInput) searchInput.value = '';
+    window._setItemsSearchQuery?.('');
 }
 
 /**

@@ -30,6 +30,10 @@ document.addEventListener('DOMContentLoaded', function() {
   if (lastActiveSection === 'users') renderUsers();
   if (lastActiveSection === 'items') renderAllItems();
   
+  if (lastActiveSection === 'archived') renderArchivedItems();
+
+  document.getElementById('archivedTypeFilter')?.addEventListener('change', renderArchivedItems);
+
   // Setup event listeners for updates
   setupEventListeners();
 });
@@ -118,7 +122,10 @@ function activateSection(section) {
   else if (section === 'items') { 
     renderAllItems(); 
   }
-  else if (section === 'inbox') { 
+  else if (section === 'archived') {
+    renderArchivedItems();
+  }
+  else if (section === 'inbox') {
     // Force a fresh reload of inbox data with no caching
     forceRefreshInbox(); 
   }
@@ -131,11 +138,11 @@ function switchSection(section) {
   const target = document.getElementById('section-' + section);
   if (target) target.style.display = '';
 
-  const titleMap = { dashboard: 'Dashboard', users: 'Users', items: 'Found Items', inbox: 'Inbox', claims: 'Claims', 'add-item': 'Add Item', 'lost-items': 'Lost Items' };
+  const titleMap = { dashboard: 'Dashboard', users: 'Users', items: 'Found Items', inbox: 'Inbox', claims: 'Claims', 'add-item': 'Add Item', 'lost-items': 'Lost Items', archived: 'Archived Items' };
   const titleEl = document.getElementById('pageTitle');
   if (titleEl) titleEl.textContent = titleMap[section] || 'Dashboard';
 
-  if (section === 'lost-items') initAdminLostItems();
+  if (section === 'lost-items' || section === 'archived') initAdminLostItems();
 }
 
 // ── Admin Lost Items ──────────────────────────────────────────────────────────
@@ -153,6 +160,8 @@ function _applyLostItems(items) {
   const pendingCount = items.filter(i => i.status === 'pending').length;
   const activeLostEl = document.getElementById('statActiveLost');
   if (activeLostEl) activeLostEl.textContent = activeCount;
+  updateItemCountStats(); // lost reports count toward both cards
+  if (document.querySelector('.nav-link.active')?.getAttribute('data-section') === 'archived') renderArchivedItems();
   const badge = document.getElementById('pendingLostBadge');
   if (badge) { badge.textContent = pendingCount; badge.style.display = pendingCount > 0 ? '' : 'none'; }
 }
@@ -214,13 +223,16 @@ function _renderAdminLostItems() {
   const items = filter === 'all' ? _lostItemsCurrent : _lostItemsCurrent.filter(i => i.status === filter);
 
   if (items.length === 0) {
+    clearPager(container);
     container.innerHTML = _lostItemsServerReady
       ? '<div style="text-align:center;padding:2rem;color:#6b7280;">No lost items found.</div>'
       : '<div style="text-align:center;padding:2rem;color:#6b7280;">Loading items…</div>';
     return;
   }
 
-  container.innerHTML = items.map(item => {
+  const rows = applyPagination('lost:' + filter, items, container, _renderAdminLostItems);
+
+  container.innerHTML = rows.map(item => {
     const isPending   = item.status === 'pending';
     const isDeclined  = item.status === 'declined';
     const isArchived  = item.status === 'archived';
@@ -762,7 +774,7 @@ function renderStats() {
 
 // Update statistics (statClaimed is kept live by watchClaimedResolvedCount)
 function updateStats(items) {
-  const total   = items.length;
+  const total   = items.filter(isNotArchived).length + _lostItemsCurrent.filter(isNotArchived).length;
   const pending = items.filter(i => i.status === 'active').length;
 
   const safe = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = String(v); };
@@ -776,6 +788,98 @@ let _statsInitialized = false;
 // Cache of found items from the watchFoundItemsStats snapshot (avoids extra .get() calls)
 let _cachedFoundItems = null;
 
+// ── Pagination ───────────────────────────────────────────────────────────────
+// Shared 10-per-page pager for the admin list sections. Each list passes its own
+// key so the page it is on survives the live snapshots that re-render it.
+const PAGE_SIZE = 10;
+const _pageByKey = {};
+
+// Returns the slice of `items` belonging to the current page and (re)draws the
+// pager under `container`. `rerender` is called when another page is picked.
+function applyPagination(key, items, container, rerender) {
+  const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+  const page  = Math.min(Math.max(_pageByKey[key] || 1, 1), totalPages); // clamp: the list may have shrunk
+  _pageByKey[key] = page;
+  const start = (page - 1) * PAGE_SIZE;
+  const slice = items.slice(start, start + PAGE_SIZE);
+  _renderPager(key, container, { page, totalPages, start, shown: slice.length, total: items.length }, rerender);
+  return slice;
+}
+
+// Send a list back to page 1 — used when its result set changes wholesale.
+function resetPage(key) { _pageByKey[key] = 1; }
+
+// Drop a list's pager — for early-return paths that draw their own empty state.
+function clearPager(container) {
+  const pager = container && document.getElementById(container.id + '__pager');
+  if (pager) pager.innerHTML = '';
+}
+
+
+function _renderPager(key, container, info, rerender) {
+  const host = container.closest('.items-table') || container;
+  const id   = container.id + '__pager';
+  let pager  = document.getElementById(id);
+  if (!pager) {
+    pager = document.createElement('div');
+    pager.id = id;
+    pager.className = 'table-pager';
+    host.insertAdjacentElement('afterend', pager);
+  }
+  if (info.total <= PAGE_SIZE) { pager.innerHTML = ''; return; } // single page — no controls
+
+  // Window the numbers so a long list doesn't produce a wall of buttons
+  const first = Math.max(1, Math.min(info.page - 2, info.totalPages - 4));
+  const last  = Math.min(info.totalPages, first + 4);
+  const nums  = [];
+  for (let p = first; p <= last; p++) nums.push(p);
+
+  pager.innerHTML = `
+    <span class="pager-info">Showing ${info.start + 1}&ndash;${info.start + info.shown} of ${info.total}</span>
+    <div class="pager-controls">
+      <button class="pager-btn" data-page="${info.page - 1}" ${info.page === 1 ? 'disabled' : ''}>&lsaquo; Prev</button>
+      ${first > 1 ? `<button class="pager-btn" data-page="1">1</button><span class="pager-gap">&hellip;</span>` : ''}
+      ${nums.map(p => `<button class="pager-btn${p === info.page ? ' active' : ''}" data-page="${p}">${p}</button>`).join('')}
+      ${last < info.totalPages ? `<span class="pager-gap">&hellip;</span><button class="pager-btn" data-page="${info.totalPages}">${info.totalPages}</button>` : ''}
+      <button class="pager-btn" data-page="${info.page + 1}" ${info.page === info.totalPages ? 'disabled' : ''}>Next &rsaquo;</button>
+    </div>`;
+
+  pager.querySelectorAll('.pager-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const p = parseInt(btn.dataset.page, 10);
+      if (!p || p === info.page || p < 1 || p > info.totalPages) return;
+      _pageByKey[key] = p;
+      rerender();
+      host.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+}
+
+// users.js lives in its own IIFE and needs these
+window.applyPagination = applyPagination;
+window.resetPage       = resetPage;
+window.clearPager      = clearPager;
+
+// Archived items (found or lost) are deleted records — excluded from every count.
+const isNotArchived = i => i.status !== 'archived';
+
+// Total Items = non-archived found items + non-archived lost reports, so the card
+// matches the combined list the "all" filter renders. Archived Items is the same
+// pool inverted. Called from both collection watchers.
+function updateItemCountStats() {
+  if (_cachedFoundItems === null) return; // found items haven't loaded yet
+
+  const total = document.getElementById('statTotalItems');
+  if (total) total.textContent = String(
+    _cachedFoundItems.filter(isNotArchived).length + _lostItemsCurrent.filter(isNotArchived).length);
+
+  const archived = document.getElementById('statArchived');
+  if (archived) archived.textContent = String(
+    _cachedFoundItems.filter(i => i.status === 'archived').length +
+    _lostItemsCurrent.filter(i => i.status === 'archived').length);
+}
+
+
 // Real-time watcher for Total Items + Active Found Items stats and recent table
 function watchFoundItemsStats() {
   // Restore from localStorage immediately so Found Items renders before Firestore responds
@@ -784,10 +888,11 @@ function watchFoundItemsStats() {
     if (saved) {
       _cachedFoundItems = JSON.parse(saved);
       const safe = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = String(v); };
-      safe('statTotalItems', _cachedFoundItems.length);
+      updateItemCountStats();
       safe('statActive', _cachedFoundItems.filter(i => i.status === 'active').length);
       const activeNav = document.querySelector('.nav-link.active');
       if (activeNav && activeNav.getAttribute('data-section') === 'items') renderAllItems();
+      if (activeNav && activeNav.getAttribute('data-section') === 'archived') renderArchivedItems();
     }
   } catch(e) {}
 
@@ -797,11 +902,12 @@ function watchFoundItemsStats() {
       if (!window.firebase || !firebase.apps || !firebase.apps.length) throw new Error('not ready');
       firebase.firestore().collection('items').onSnapshot({ includeMetadataChanges: true }, snap => {
         const safe = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = String(v); };
-        safe('statTotalItems', snap.size);
-        safe('statActive', snap.docs.filter(d => d.data().status === 'active').length);
         _cachedFoundItems = snap.docs.map(d => ({ id: d.id, _type: 'found', ...d.data() }));
+        updateItemCountStats();
+        safe('statActive', snap.docs.filter(d => d.data().status === 'active').length);
         const _activeNav = document.querySelector('.nav-link.active');
         if (_activeNav && _activeNav.getAttribute('data-section') === 'items') renderAllItems();
+        if (_activeNav && _activeNav.getAttribute('data-section') === 'archived') renderArchivedItems();
         if (snap.metadata.fromCache) return; // defer stats/trends update until server confirms
         _statsInitialized = true;
         renderRecentItemsWithoutActions();
@@ -965,8 +1071,8 @@ function statusDropdown(currentStatus) {
 window._applyDashboardFilter = function(filterType) {
   const heading = document.getElementById('recentItemsHeading');
   const titleEl  = document.getElementById('pageTitle');
-  const headingMap = { all: 'Recent Items', active: 'Recent Active Found Items', claimed: 'Recent Claimed / Resolved Items', soon: 'Recent Items for Disposal', lost: 'Active Lost Reports' };
-  const titleMap   = { all: 'Dashboard',    active: 'Active Found Items',        claimed: 'Items Claimed / Resolved',       soon: 'Items for Disposal',         lost: 'Active Lost Items' };
+  const headingMap = { all: 'Recent Items', active: 'Recent Active Found Items', claimed: 'Recent Claimed / Resolved Items', soon: 'Recent Items for Disposal', lost: 'Active Lost Reports', archived: 'Archived Items' };
+  const titleMap   = { all: 'Dashboard',    active: 'Active Found Items',        claimed: 'Items Claimed / Resolved',       soon: 'Items for Disposal',         lost: 'Active Lost Items', archived: 'Archived Items' };
   if (heading) heading.textContent = headingMap[filterType] || 'Recent Items';
   if (titleEl)  titleEl.textContent  = titleMap[filterType]  || 'Dashboard';
   renderRecentItemsWithoutActions(filterType);
@@ -977,8 +1083,8 @@ function renderRecentItemsWithoutActions(statusFilter) {
   const container = document.getElementById('recentItemsContainer');
   if (!container) return;
 
-  const needFound = !statusFilter || statusFilter === 'all' || statusFilter === 'active' || statusFilter === 'claimed' || statusFilter === 'soon';
-  const needLost  = !statusFilter || statusFilter === 'all' || statusFilter === 'lost' || statusFilter === 'claimed';
+  const needFound = !statusFilter || statusFilter === 'all' || statusFilter === 'active' || statusFilter === 'claimed' || statusFilter === 'soon' || statusFilter === 'archived';
+  const needLost  = !statusFilter || statusFilter === 'all' || statusFilter === 'lost' || statusFilter === 'claimed' || statusFilter === 'archived';
 
   // Use cached data when available — avoids extra Firestore round trips and eliminates the "Loading..." flash
   const foundPromise = needFound
@@ -1005,10 +1111,11 @@ function renderRecentItemsWithoutActions(statusFilter) {
   }
 
   Promise.all([foundPromise, lostPromise]).then(([foundItems, lostItems]) => {
-    let combined = [
-      ...foundItems.filter(i => i.status !== 'archived'),
-      ...lostItems
-    ];
+    // The archived card is the one view that shows archived records
+    let combined = statusFilter === 'archived'
+      ? [...foundItems.filter(i => i.status === 'archived'), ...lostItems.filter(i => i.status === 'archived')]
+      : [...foundItems.filter(isNotArchived), ...lostItems.filter(isNotArchived)];
+
 
     if (statusFilter === 'active')  combined = combined.filter(i => i._type === 'found' && i.status === 'active');
     else if (statusFilter === 'claimed') combined = combined.filter(i =>
@@ -1027,9 +1134,10 @@ function renderRecentItemsWithoutActions(statusFilter) {
       return tb - ta;
     });
 
-    // 'all' shows everything; specific filters cap at 10
-    const limit = (!statusFilter || statusFilter === 'all') ? combined.length : 10;
-    displayReadOnlyRecentItems(combined.slice(0, limit), container);
+    // Every filter shows its full result set, 10 rows to a page
+    const key  = 'recent:' + (statusFilter || 'all');
+    const rows = applyPagination(key, combined, container, () => renderRecentItemsWithoutActions(statusFilter));
+    displayReadOnlyRecentItems(rows, container);
   }).catch(err => {
     console.error('Error loading items:', err);
     container.innerHTML = '<div class="table-row"><div style="grid-column: 1/-1; text-align: center;">Error loading items</div></div>';
@@ -1092,6 +1200,98 @@ function displayReadOnlyRecentItems(items, container) {
   });
 }
 
+// ── Archived Items section ───────────────────────────────────────────────────
+// Archived found items and lost reports stay out of every count and out of the
+// user-facing app, but live here so an admin can review or restore them.
+function renderArchivedItems() {
+  const container = document.getElementById('archivedItemsContainer');
+  if (!container) return;
+
+  const filter = document.getElementById('archivedTypeFilter')?.value || 'all';
+  const found  = (_cachedFoundItems || []).filter(i => i.status === 'archived').map(i => ({ ...i, _type: 'found' }));
+  const lost   = _lostItemsCurrent.filter(i => i.status === 'archived').map(i => ({ ...i, _type: 'lost' }));
+  const items  = filter === 'found' ? found : filter === 'lost' ? lost : [...found, ...lost];
+
+  // Most recently archived first; records predating the archivedAt field sort last
+  items.sort((a, b) => (b.archivedAt?.toMillis?.() || 0) - (a.archivedAt?.toMillis?.() || 0));
+
+  if (!items.length) {
+    clearPager(container);
+    const ready = _cachedFoundItems !== null || _lostItemsServerReady;
+    container.innerHTML = ready
+      ? '<div style="text-align:center;padding:2rem;color:#6b7280;">No archived items.</div>'
+      : '<div style="text-align:center;padding:2rem;color:#6b7280;">Loading…</div>';
+    return;
+  }
+
+  const rows = applyPagination('archived:' + filter, items, container, renderArchivedItems);
+
+  container.innerHTML = rows.map(item => {
+    const isLost = item._type === 'lost';
+    const who  = item.archivedByAdmin ? `Admin (${item.archivedByAdminName || 'Administrator'})`
+               : item.archivedByUser  ? (item.archivedByName || item.userName || 'Owner')
+               : '—';
+    const when = item.archivedAt ? formatDate(item.archivedAt) : '';
+    const thumb = item.image
+      ? `<img src="${item.image}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;flex-shrink:0;" onerror="this.style.visibility='hidden'">`
+      : `<div style="width:40px;height:40px;background:#f1f5f9;border-radius:6px;flex-shrink:0;"></div>`;
+    const typeBadge = isLost
+      ? `<span style="background:#fef3c7;color:#b45309;padding:2px 10px;border-radius:99px;font-size:0.7rem;font-weight:700;letter-spacing:0.04em;">LOST</span>`
+      : `<span style="background:#dbeafe;color:#1e40af;padding:2px 10px;border-radius:99px;font-size:0.7rem;font-weight:700;letter-spacing:0.04em;">FOUND</span>`;
+
+    return `
+      <div class="table-row" style="grid-template-columns:2fr 1fr 1.5fr 1fr 1.4fr 100px 110px;">
+        <div class="ai-name" style="display:flex;align-items:center;gap:0.75rem;">${thumb}<span style="font-weight:500;">${item.title || '—'}</span></div>
+        <div class="ai-cat"  style="color:#64748b;">${item.category || '—'}</div>
+        <div class="ai-loc"  style="color:#64748b;">${(isLost ? item.lastLocation : item.location) || '—'}</div>
+        <div class="ai-date" style="color:#64748b;">${formatDate(isLost ? item.dateLost : item.date)}</div>
+        <div class="ai-by"   style="color:#64748b;">${who}${when ? `<div style="font-size:0.75rem;color:#94a3b8;">${when}</div>` : ''}</div>
+        <div class="ai-type">${typeBadge}</div>
+        <div class="action-buttons">
+          <button class="btn-icon" title="Restore" style="color:#1a2e6b;" onclick="window._restoreArchivedItem('${item._type}','${item.id}')">
+            <i data-lucide="rotate-ccw" width="16" height="16"></i>
+          </button>
+        </div>
+      </div>`;
+  }).join('');
+
+  if (window.lucide?.createIcons) lucide.createIcons();
+}
+
+// Put an archived record back into circulation. The status it held before being
+// archived isn't stored, so it returns as 'active' — same as the lost item
+// modal's Restore button.
+window._restoreArchivedItem = function(type, id) {
+  if (!confirm('Restore this item? It will become active again and reappear for users.')) return;
+  const del = firebase.firestore.FieldValue.delete();
+  firebase.firestore().collection(type === 'lost' ? 'lostItems' : 'items').doc(id).update({
+    status: 'active',
+    archivedByUser:      del,
+    archivedByName:      del,
+    archivedByEmail:     del,
+    archivedByAdmin:     del,
+    archivedByAdminName: del,
+    archivedAt:          del
+  }).catch(() => alert('Could not restore this item. Please try again.'));
+};
+
+// Current Found Items search query — owned here so a search filters the whole
+
+// dataset rather than only the rows currently on screen.
+let _itemsSearchQuery = '';
+
+// Called by admin-search.js whenever the query changes
+window._setItemsSearchQuery = function(q) {
+  _itemsSearchQuery = q || '';
+  const input = document.getElementById('itemSearchInput');
+  // Only write back when clearing (the Clear Search button) — syncing the
+  // trimmed value on every keystroke would eat a space as it is typed.
+  if (input && !_itemsSearchQuery) input.value = '';
+
+  resetPage('items'); // a new query is a new result set
+  renderAllItems();
+};
+
 // Render All Items WITH ACTIONS (Items section)
 function renderAllItems() {
   const container = document.getElementById('allItemsContainer');
@@ -1100,11 +1300,28 @@ function renderAllItems() {
   // _cachedFoundItems is kept live by watchFoundItemsStats' onSnapshot.
   // If it's ready, render immediately. If not, show a loading state and wait —
   // watchFoundItemsStats will call renderAllItems() again once data arrives.
-  if (_cachedFoundItems !== null) {
-    displayItemsWithActions(_cachedFoundItems, container);
-  } else {
+  if (_cachedFoundItems === null) {
     container.innerHTML = '<div class="table-row"><div style="grid-column: 1/-1; text-align: center; color:#64748b;">Loading items…</div></div>';
+    return;
   }
+
+  const q = _itemsSearchQuery.trim().toLowerCase();
+  const matches = q
+    ? _cachedFoundItems.filter(i =>
+        `${i.title || ''} ${i.category || ''} ${i.location || ''}`.toLowerCase().includes(q))
+    : _cachedFoundItems;
+
+  if (q && !matches.length) {
+    applyPagination('items', matches, container, renderAllItems); // clears the pager
+    container.innerHTML = `<div class="table-row no-results-message"><div style="grid-column:1/-1;text-align:center;padding:2rem;">
+        No items found matching "${q}" <button id="clearSearchBtn" class="btn-primary" style="margin-left:1rem;padding:0.25rem 0.5rem;">Clear Search</button>
+      </div></div>`;
+    document.getElementById('clearSearchBtn')?.addEventListener('click', () => window._setItemsSearchQuery(''));
+    return;
+  }
+
+  displayItemsWithActions(applyPagination('items', matches, container, renderAllItems), container);
+  if (q) container.querySelectorAll('.table-row').forEach(row => window.highlightMatches?.(row, q));
 }
 
 // Display Items WITH ACTIONS (Items section)
@@ -1595,13 +1812,16 @@ function updateStatTrends(foundItems, lostItems) {
     }
   }
 
-  // Total items found (by found date)
-  const thisTotal  = foundItems.filter(i => getMonth(i) === thisMonth).length;
-  const lastTotal  = foundItems.filter(i => getMonth(i) === lastMonth).length;
+  // Total items: same pool as the Total Items card (non-archived found + lost reports)
+  const totalPool  = [...foundItems.filter(isNotArchived), ...(lostItems || []).filter(isNotArchived)];
+  const thisTotal  = totalPool.filter(i => getMonth(i) === thisMonth).length;
+  const lastTotal  = totalPool.filter(i => getMonth(i) === lastMonth).length;
   setPill('deltaTotalItems', thisTotal, lastTotal);
 
   // Active found items added this month vs last
-  setPill('deltaActive', thisTotal, lastTotal);
+  const thisFound  = foundItems.filter(i => getMonth(i) === thisMonth).length;
+  const lastFound  = foundItems.filter(i => getMonth(i) === lastMonth).length;
+  setPill('deltaActive', thisFound, lastFound);
 
   // Lost items reported this month vs last
   if (lostItems && lostItems.length) {
@@ -1622,4 +1842,18 @@ function updateStatTrends(foundItems, lostItems) {
   const thisClaimed = claimedAll.filter(i => claimMonth(i) === thisMonth).length;
   const lastClaimed = claimedAll.filter(i => claimMonth(i) === lastMonth).length;
   setPill('deltaClaimed', thisClaimed, lastClaimed);
+
+  // Archived items: by when they were archived, not when they were found or lost
+  function archiveMonth(item) {
+    const raw = item.archivedAt;
+    if (!raw) return null;
+    if (raw.toDate) return raw.toDate().toISOString().substring(0, 7);
+    if (raw instanceof Date) return raw.toISOString().substring(0, 7);
+    return null;
+  }
+  const archivedAll  = [...foundItems, ...(lostItems || [])].filter(i => i.status === 'archived');
+  const thisArchived = archivedAll.filter(i => archiveMonth(i) === thisMonth).length;
+  const lastArchived = archivedAll.filter(i => archiveMonth(i) === lastMonth).length;
+  setPill('deltaArchived', thisArchived, lastArchived);
+
 }
