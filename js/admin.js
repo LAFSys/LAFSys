@@ -774,7 +774,7 @@ function renderStats() {
 
 // Update statistics (statClaimed is kept live by watchClaimedResolvedCount)
 function updateStats(items) {
-  const total   = items.filter(isNotArchived).length + _lostItemsCurrent.filter(isNotArchived).length;
+  const total   = items.length + _lostItemsCurrent.length;
   const pending = items.filter(i => i.status === 'active').length;
 
   const safe = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = String(v); };
@@ -863,15 +863,14 @@ window.clearPager      = clearPager;
 // Archived items (found or lost) are deleted records — excluded from every count.
 const isNotArchived = i => i.status !== 'archived';
 
-// Total Items = non-archived found items + non-archived lost reports, so the card
-// matches the combined list the "all" filter renders. Archived Items is the same
-// pool inverted. Called from both collection watchers.
+// Total Items = all found items + all lost reports (including archived).
+// Archived Items is the subset with status === 'archived'. Called from both collection watchers.
 function updateItemCountStats() {
   if (_cachedFoundItems === null) return; // found items haven't loaded yet
 
   const total = document.getElementById('statTotalItems');
   if (total) total.textContent = String(
-    _cachedFoundItems.filter(isNotArchived).length + _lostItemsCurrent.filter(isNotArchived).length);
+    _cachedFoundItems.length + _lostItemsCurrent.length);
 
   const archived = document.getElementById('statArchived');
   if (archived) archived.textContent = String(

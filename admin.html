@@ -213,6 +213,12 @@
             transform: translateY(-3px);
             box-shadow: 0 6px 12px -2px rgba(0, 0, 0, 0.1), 0 3px 4px -1px rgba(0, 0, 0, 0.05);
         }
+        #archivedStatCard:hover {
+            transform: none;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            cursor: default;
+        }
+        #archivedStatCard:hover::after { transform: scaleX(0); }
         
         .stat-card::after {
             content: '';
@@ -1193,7 +1199,7 @@
                         <div class="stat-value" id="statClaimed">0</div>
                         <div class="stat-delta" id="deltaClaimed"></div>
                     </div>
-                    <div class="stat-card" data-filter="archived" id="archivedStatCard">
+                    <div class="stat-card" id="archivedStatCard" style="cursor:default;">
                         <div class="stat-label">
                             <i data-lucide="archive" width="16" height="16"></i>
                             Archived Items
@@ -1476,7 +1482,7 @@
     <script src="js/firebase-data.js"></script>
     <script src="js/item-init.js"></script>
     <!-- Admin dashboard script (completely rewritten) -->
-    <script src="js/admin.js?v=7.0"></script>
+    <script src="js/admin.js?v=8.0"></script>
     <!-- Modal popup for item details -->
     <script src="js/admin-modal.js"></script>
     <!-- Live chat inbox functionality -->
